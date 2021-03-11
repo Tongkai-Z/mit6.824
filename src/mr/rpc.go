@@ -24,6 +24,14 @@ type ExampleReply struct {
 	Y int
 }
 
+type Task struct {
+	Files   []string
+	IsMap   bool
+	ID      string
+	Status  int
+	NReduce int
+}
+
 type RequestTaskRequest struct{}
 
 type RequestTaskResponse struct {
