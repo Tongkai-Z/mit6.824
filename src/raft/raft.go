@@ -66,7 +66,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	// persisted state
-	currentTerm int32 // increase monotonically
+	currentTerm int32 //increase monotonically FIXME: use Mutex to protect
 	votedFor    int32
 	log         []*Entry // index starting from 1
 	// volatile state
@@ -189,7 +189,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// (2A, 2B).
 	// 2A
 	// FIXME: requestVote also set the heartbeat preventing other follower time-out
-	atomic.StoreInt32(&rf.heartbeat, 1)
+	// FIXME: requestVote only reset heartbeat when it grant the vote
 	rf.checkTerm(args.Term)
 	rf.mu.Lock() // protect rf's field
 	// last entry's term
@@ -203,6 +203,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	} else if rf.votedFor == -1 || rf.votedFor == int32(args.CandidateId) {
 		// candidate is at least up-to-date as receiver
 		if lastTerm < args.LastLogTerm || len(rf.log) <= args.LastLogIndex {
+			atomic.StoreInt32(&rf.heartbeat, 1)
 			reply.VoteGranted = true
 			rf.votedFor = int32(args.CandidateId)
 			reply.Term = args.Term
@@ -317,7 +318,7 @@ func (rf *Raft) ticker() {
 				rf.startElection(int32(currentTerm) + 1)
 			}
 		} else {
-			// TODO: wins the election turn into leader loop
+			// wins the election turn into leader loop
 			// send out AppendEntries RPC as heartbeat
 			time.Sleep(time.Duration(120) * time.Millisecond)
 			rf.sendHeartBeat()
@@ -329,9 +330,11 @@ func (rf *Raft) ticker() {
 // this function send heartbeat to all peers concurrently
 func (rf *Raft) sendHeartBeat() {
 	req := &AppendEntriesArgs{}
-	req.Term = atomic.LoadInt32(&rf.currentTerm)
+	rf.mu.Lock()
+	req.Term = rf.currentTerm
 	req.LeaderId = rf.me
-	req.LeaderCommit = atomic.LoadInt32(&rf.commitIndex)
+	req.LeaderCommit = rf.commitIndex
+	rf.mu.Unlock()
 	// rf.mu.Lock()
 	// req.PrevLogIndex = len(rf.log)
 	// prevLogTerm := 0
@@ -342,10 +345,10 @@ func (rf *Raft) sendHeartBeat() {
 	// rf.mu.Unlock()
 	for idx, _ := range rf.peers {
 		if idx != rf.me {
-			go func() {
+			go func(i int) {
 				reply := &AppendEntriesReply{}
-				rf.sendAppendEntries(idx, req, reply)
-			}()
+				rf.sendAppendEntries(i, req, reply)
+			}(idx)
 		}
 	}
 }
@@ -356,14 +359,18 @@ func (rf *Raft) sendHeartBeat() {
 // if currentTerm <= receivedTerm it would turn to follower at once
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	// update term first
-	if !rf.checkTerm(args.Term) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.currentTerm > args.Term {
 		reply.Success = false
-		reply.Term = atomic.LoadInt32(&rf.currentTerm)
+		reply.Term = rf.currentTerm
 		return
 	}
+	// sender's term is at least as big as the receiver
 	// turn to follower and clear the votefor
-	atomic.StoreInt32(&rf.state, 2)
-	atomic.StoreInt32(&rf.votedFor, -1)
+	rf.state = 2
+	rf.votedFor = -1
+	rf.currentTerm = args.Term
 	if args.Entries == nil { //heartbeat
 		//set heartbeat flag
 		atomic.CompareAndSwapInt32(&rf.heartbeat, 0, 1)
@@ -393,14 +400,15 @@ type AppendEntriesReply struct {
 // if it's in candidate state or leader state, it will turn into follower state
 // return false if currentTerm is bigger than receivedTerm
 func (rf *Raft) checkTerm(receivedTerm int32) bool {
-	term := atomic.LoadInt32(&rf.currentTerm)
-	if term > receivedTerm {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.currentTerm > receivedTerm {
 		return false
 	}
-	if term < receivedTerm {
-		atomic.StoreInt32(&rf.currentTerm, receivedTerm)
+	if rf.currentTerm < receivedTerm {
+		rf.currentTerm = receivedTerm
 		// turn to follower
-		atomic.StoreInt32(&rf.state, 2)
+		rf.state = 2
 	}
 	return true
 }
@@ -417,29 +425,27 @@ func (rf *Raft) startElection(termForElection int32) {
 	}
 	rf.mu.Unlock()
 	var wg sync.WaitGroup
-	majority := len(rf.peers) / 2
+	majority := int32(len(rf.peers) / 2)
 	for index, _ := range rf.peers {
 		if index != rf.me {
 			wg.Add(1)
-			go func() {
+			go func(idx int) {
 				req := &RequestVoteArgs{}
 				req.CandidateId = rf.me
 				req.Term = termForElection
 				req.LastLogIndex = lastLogIndex
 				req.LastLogTerm = lastLogTerm
 				resp := &RequestVoteReply{}
-				ok := rf.sendRequestVote(index, req, resp)
+				ok := rf.sendRequestVote(idx, req, resp)
 				// wait for majority votes
-				rf.mu.Lock()
 				if ok && resp.VoteGranted {
-					majority--
+					atomic.AddInt32(&majority, -1)
 				}
 				// when a server find its current term is smaller
 				// it would turn into follower
-				rf.mu.Unlock()
 				rf.checkTerm(resp.Term)
 				wg.Done()
-			}()
+			}(index)
 
 		}
 	}
@@ -450,7 +456,7 @@ func (rf *Raft) startElection(termForElection int32) {
 	wg.Wait()
 	rf.mu.Lock()
 	if rf.state == 3 {
-		if majority <= 0 { // win the election
+		if int(atomic.LoadInt32(&majority)) <= 0 { // win the election
 			rf.state = 1 // turn to leader
 		} else { // no winner
 			rf.state = 2 // turn to follower
