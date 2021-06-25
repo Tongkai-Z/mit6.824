@@ -20,6 +20,7 @@ package raft
 import (
 	//	"bytes"
 
+	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -66,7 +67,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	// persisted state
-	currentTerm int32 //increase monotonically FIXME: use Mutex to protect
+	currentTerm int32 //increase monotonically
 	votedFor    int32
 	log         []*Entry // index starting from 1
 	// volatile state
@@ -181,18 +182,27 @@ type RequestVoteReply struct {
 
 //
 // example RequestVote RPC handler.
-// reset the timer?
 // Receiver implementation: 1. Reply false if term < currentTerm (§5.1)
 // 2. If votedFor is null or candidateId, and candidate’s log is at
 // least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// (2A, 2B).
 	// 2A
-	// FIXME: requestVote also set the heartbeat preventing other follower time-out
-	// FIXME: requestVote only reset heartbeat when it grant the vote
-	rf.checkTerm(args.Term)
+	// FIXME(done) requestVote also set the heartbeat preventing other follower time-out
+	// FIXME (done)requestVote only reset heartbeat when it grant the vote
 	rf.mu.Lock() // protect rf's field
 	// last entry's term
+	// TODO (done)if leader or candidate finds out that it's term is out of date
+	// it will immediately update its term and turn to follower
+	// FIXME (done)update the receiver's term if it's smaller
+	// FIXME (done)should we update while we receive voterequest?
+	// this may cause the term to increase even no one get elected
+	if args.Term > rf.currentTerm {
+		rf.currentTerm = args.Term
+		rf.state = 2
+		//clear voted for
+		rf.votedFor = -1
+	}
 	lastTerm := 0
 	if len(rf.log) > 0 {
 		lastTerm = rf.log[len(rf.log)-1].Term
@@ -200,21 +210,26 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
+		log.Printf("server %d(%d)reject voting server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
+		// not candidate
 	} else if rf.votedFor == -1 || rf.votedFor == int32(args.CandidateId) {
 		// candidate is at least up-to-date as receiver
 		if lastTerm < args.LastLogTerm || len(rf.log) <= args.LastLogIndex {
 			atomic.StoreInt32(&rf.heartbeat, 1)
 			reply.VoteGranted = true
 			rf.votedFor = int32(args.CandidateId)
-			reply.Term = args.Term
+			log.Printf("server %d(%d) vote for server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 		} else {
 			reply.VoteGranted = false
-			reply.Term = args.Term
+			log.Printf("server %d(%d) rejects server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 		}
-	} else { // voted
+		reply.Term = args.Term
+	} else { // already voted this term
 		reply.VoteGranted = false
 		reply.Term = args.Term
+		log.Printf("server %d(%d) rejects server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 	}
+
 	rf.mu.Unlock()
 }
 
@@ -309,12 +324,13 @@ func (rf *Raft) ticker() {
 			// Your code here to check if a leader election should
 			// be started and to randomize sleeping time using
 			// time.Sleep()
-			interval := rand.Intn(150) + 150
+			interval := rand.Intn(300) + 150
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 			// hb := atomic.LoadInt32(&rf.heartbeat)
 			// heartbeat reset to 0
 			if !atomic.CompareAndSwapInt32(&rf.heartbeat, 1, 0) {
 				// increment the current term by one
+				// FIXMEshould startElection using another new goroutine?
 				rf.startElection(int32(currentTerm) + 1)
 			}
 		} else {
@@ -335,14 +351,6 @@ func (rf *Raft) sendHeartBeat() {
 	req.LeaderId = rf.me
 	req.LeaderCommit = rf.commitIndex
 	rf.mu.Unlock()
-	// rf.mu.Lock()
-	// req.PrevLogIndex = len(rf.log)
-	// prevLogTerm := 0
-	// if len(rf.log) > 0 {
-	// 	prevLogTerm = rf.log[len(rf.log)-1].Term
-	// }
-	// req.PrevLogTerm = prevLogTerm
-	// rf.mu.Unlock()
 	for idx, _ := range rf.peers {
 		if idx != rf.me {
 			go func(i int) {
@@ -418,17 +426,21 @@ func (rf *Raft) startElection(termForElection int32) {
 	rf.votedFor = int32(rf.me)
 	rf.state = 3 // turn to candidate
 	rf.currentTerm = termForElection
+	log.Printf("server %d starts an election for term %d\n", rf.me, rf.currentTerm)
 	lastLogIndex := len(rf.log)
 	lastLogTerm := 0
 	if len(rf.log) > 0 {
 		lastLogTerm = rf.log[lastLogIndex-1].Term
 	}
 	rf.mu.Unlock()
-	var wg sync.WaitGroup
+
+	respChan := make(chan int)
+	voteChan := make(chan int)
+	count := int32(len(rf.peers) - 1)
 	majority := int32(len(rf.peers) / 2)
+	log.Printf("server %d needs %d votes", rf.me, majority)
 	for index, _ := range rf.peers {
 		if index != rf.me {
-			wg.Add(1)
 			go func(idx int) {
 				req := &RequestVoteArgs{}
 				req.CandidateId = rf.me
@@ -437,14 +449,32 @@ func (rf *Raft) startElection(termForElection int32) {
 				req.LastLogTerm = lastLogTerm
 				resp := &RequestVoteReply{}
 				ok := rf.sendRequestVote(idx, req, resp)
+				// network failure cause the response delayed by 2sec
+				// so we shouldn't wait for it to join if we already got majority votes
+				// if majority = 0 we can triger the following logic
+				log.Printf("server %d responded %v", idx, ok)
 				// wait for majority votes
-				if ok && resp.VoteGranted {
-					atomic.AddInt32(&majority, -1)
+				atomic.AddInt32(&count, -1)
+				if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
+					respChan <- 1
 				}
-				// when a server find its current term is smaller
-				// it would turn into follower
-				rf.checkTerm(resp.Term)
-				wg.Done()
+				if ok {
+					if resp.VoteGranted {
+						atomic.AddInt32(&majority, -1)
+						if atomic.LoadInt32(&majority) == 0 {
+							voteChan <- 1
+						}
+					} else {
+						rf.mu.Lock()
+						// when a server find its current term is smaller
+						// it would turn into follower
+						if rf.currentTerm < resp.Term {
+							rf.state = 2
+							rf.currentTerm = resp.Term
+						}
+						rf.mu.Unlock()
+					}
+				}
 			}(index)
 
 		}
@@ -453,18 +483,25 @@ func (rf *Raft) startElection(termForElection int32) {
 	// time.Sleep(time.Duration(interval) * time.Millisecond)
 	// since Call() must return, we don't need set the timeout but use waitgroup
 	// timeout check majority vote
-	wg.Wait()
-	rf.mu.Lock()
-	if rf.state == 3 {
-		if int(atomic.LoadInt32(&majority)) <= 0 { // win the election
+	// TODOuse select to observe two info: all response / majority granted vote
+	// FIXMEsplit brain timeout
+	select {
+	case <-voteChan:
+		rf.mu.Lock()
+		if rf.state == 3 {
 			rf.state = 1 // turn to leader
-		} else { // no winner
-			rf.state = 2 // turn to follower
+			log.Printf("server %d becomes leader in term %d\n", rf.me, rf.currentTerm)
+		} else { // already turn to follower due to other term exchange rpc
+			log.Printf("server %d lose election for term %d\n", rf.me, rf.currentTerm)
 		}
+		// someone already win or current term is stale
+		rf.mu.Unlock()
+	case <-respChan:
+		rf.mu.Lock()
+		rf.state = 2 // turn to follower
+		log.Printf("server %d lose election for term %d\n", rf.me, rf.currentTerm)
+		rf.mu.Unlock()
 	}
-	// someone already win or current term is stale
-	rf.mu.Unlock()
-	// if no majority votes received, then we can turn to follower after a specific time out
 }
 
 //
@@ -484,7 +521,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-
+	rf.dead = 0
 	// Your initialization code here (2A, 2B, 2C).
 	rf.currentTerm = 0
 	rf.votedFor = -1
