@@ -330,7 +330,7 @@ func (rf *Raft) ticker() {
 			// heartbeat reset to 0
 			if !atomic.CompareAndSwapInt32(&rf.heartbeat, 1, 0) {
 				// increment the current term by one
-				// FIXMEshould startElection using another new goroutine?
+				// FIXME: should startElection using another new goroutine?
 				rf.startElection(int32(currentTerm) + 1)
 			}
 		} else {
@@ -436,6 +436,11 @@ func (rf *Raft) startElection(termForElection int32) {
 
 	respChan := make(chan int)
 	voteChan := make(chan int)
+	timerChan := make(chan int)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		timerChan <- 1
+	}()
 	count := int32(len(rf.peers) - 1)
 	majority := int32(len(rf.peers) / 2)
 	log.Printf("server %d needs %d votes", rf.me, majority)
@@ -501,7 +506,16 @@ func (rf *Raft) startElection(termForElection int32) {
 		rf.state = 2 // turn to follower
 		log.Printf("server %d lose election for term %d\n", rf.me, rf.currentTerm)
 		rf.mu.Unlock()
+	case <-timerChan:
+		rf.mu.Lock()
+		rf.state = 2 // turn to follower
+		log.Printf("server %d stop election for term %d, due to time out\n", rf.me, rf.currentTerm)
+		rf.mu.Unlock()
 	}
+	// FIXME both voteChan and respChan not respond?
+	// possible if network partition happened
+	// so we need time-out to transfer the state from candidate to follower
+	// end this go routine and go back to ticker() loop
 }
 
 //
