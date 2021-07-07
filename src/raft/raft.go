@@ -71,6 +71,7 @@ type Raft struct {
 	votedFor    int32
 	log         []*Entry // index starting from 1
 	applyCh     chan ApplyMsg
+	killCh      chan int8
 	// volatile state
 	commitIndex int32
 	lastApplied int32
@@ -328,7 +329,7 @@ func (rf *Raft) processLogReplication() {
 		if idx != rf.me {
 			go func(i int) {
 				args := &AppendEntriesArgs{}
-				rf.buildAppendEntriesArgs(args, i)
+				rf.buildAppendEntriesArgs(args, i) // contains lock might block each other
 				reply := &AppendEntriesReply{}
 				DPrintf("send entry to %d", i)
 				rf.sendAppendEntries(i, args, reply)
@@ -420,6 +421,9 @@ func (rf *Raft) processLogReplication() {
 		// 	rf.mu.Lock()
 		// 	DPrintf("server %d commit not succeed for term %d, due to time out\n", rf.me, rf.currentTerm)
 		// 	rf.mu.Unlock()
+	case <-rf.killCh:
+		rf.killCh <- 1
+		DPrintf("leader %d killed", rf.me)
 	}
 
 }
@@ -469,6 +473,7 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	rf.killCh <- 1
 }
 
 func (rf *Raft) killed() bool {
@@ -526,6 +531,9 @@ func (rf *Raft) ticker() {
 // if the current server is a candidate, it will compare the term
 // if currentTerm <= receivedTerm it would turn to follower at once
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	if rf.killed() {
+		return
+	}
 	// update term first
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -588,6 +596,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) checkApply(target int32) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	target = int32(min(int(target), len(rf.log)))
 	for i := rf.lastApplied + 1; i <= target; i++ {
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log[i-1].Command
@@ -721,6 +730,9 @@ func (rf *Raft) startElection(termForElection int32) {
 		rf.state = 2 // turn to follower
 		DPrintf("server %d stop election for term %d, due to time out\n", rf.me, rf.currentTerm)
 		rf.mu.Unlock()
+	case <-rf.killCh:
+		rf.killCh <- 1
+		DPrintf("server %d killed while election", rf.me)
 	}
 	// FIXME both voteChan and respChan not respond?
 	// possible if network partition happened
@@ -776,6 +788,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.applyCh = applyCh
 	rf.heartbeat = 0
+	rf.killCh = make(chan int8, 10)
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
