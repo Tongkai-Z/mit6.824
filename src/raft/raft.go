@@ -71,7 +71,6 @@ type Raft struct {
 	votedFor    int32
 	log         []*Entry // index starting from 1
 	applyCh     chan ApplyMsg
-	killCh      chan int8
 	// volatile state
 	commitIndex int32
 	lastApplied int32
@@ -290,7 +289,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 // if it's ever committed. the second return value is the current
 // term. the third return value is true if this server believes it is
 // the leader.
-//
+// TODO: concurrent command in a short time interval will only sendout the last one
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
@@ -421,9 +420,6 @@ func (rf *Raft) processLogReplication() {
 		// 	rf.mu.Lock()
 		// 	DPrintf("server %d commit not succeed for term %d, due to time out\n", rf.me, rf.currentTerm)
 		// 	rf.mu.Unlock()
-	case <-rf.killCh:
-		rf.killCh <- 1
-		DPrintf("leader %d killed", rf.me)
 	}
 
 }
@@ -473,7 +469,6 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
-	rf.killCh <- 1
 }
 
 func (rf *Raft) killed() bool {
@@ -730,9 +725,6 @@ func (rf *Raft) startElection(termForElection int32) {
 		rf.state = 2 // turn to follower
 		DPrintf("server %d stop election for term %d, due to time out\n", rf.me, rf.currentTerm)
 		rf.mu.Unlock()
-	case <-rf.killCh:
-		rf.killCh <- 1
-		DPrintf("server %d killed while election", rf.me)
 	}
 	// FIXME both voteChan and respChan not respond?
 	// possible if network partition happened
@@ -788,7 +780,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.applyCh = applyCh
 	rf.heartbeat = 0
-	rf.killCh = make(chan int8, 10)
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
