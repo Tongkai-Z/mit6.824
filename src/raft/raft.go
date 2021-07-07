@@ -569,13 +569,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		DPrintf("server %d rejected leader %d, log: %+v, prevIndex: %d, prevTerm: %d, args.prevTerm: %d", rf.me, args.LeaderId, rf.log, args.PrevLogIndex, prevTerm, args.PrevLogTerm)
 		//TODO: reply the conflict term and the first entry for that term
 		reply.ConflictTerm = prevTerm
-		if prevTerm > 0 {
+		if len(rf.log) < args.PrevLogIndex {
+			reply.FirstConflictTermEntryIndex = len(rf.log)
+		} else if prevTerm > 0 {
 			// find the first entry in that term
 			for i := args.PrevLogIndex - 1; i >= 0; i-- {
 				if i == 0 || rf.log[i-1].Term < prevTerm {
 					reply.FirstConflictTermEntryIndex = i + 1
 				}
 			}
+		} else {
+			reply.FirstConflictTermEntryIndex = 1
 		}
 	}
 	reply.Term = rf.currentTerm
