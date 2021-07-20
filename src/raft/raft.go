@@ -20,13 +20,14 @@ package raft
 import (
 	//	"bytes"
 
+	"bytes"
 	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 )
 
@@ -53,6 +54,12 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type PersistedState struct {
+	CurrentTerm int32
+	VotedFor    int32
+	Log         []*Entry
+}
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -63,14 +70,13 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 	heartbeat int32               // CAS
-	// Your data here (2A, 2B, 2C).
-	// Look at the paper's Figure 2 for a description of what
-	// state a Raft server must maintain.
+
 	// persisted state
 	currentTerm int32 //increase monotonically
 	votedFor    int32
 	log         []*Entry // index starting from 1
-	applyCh     chan ApplyMsg
+
+	applyCh chan ApplyMsg
 	// volatile state
 	commitIndex int32
 	lastApplied int32
@@ -113,16 +119,21 @@ func (rf *Raft) GetState() (int, bool) {
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
-//
+// persister got its own lock, so we should put lock in persist()
+// always persist when the persisted states changed
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	s := PersistedState{
+		CurrentTerm: rf.currentTerm,
+		VotedFor:    rf.votedFor,
+		Log:         rf.log,
+	}
+	e.Encode(s)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -132,19 +143,18 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	decoded := PersistedState{}
+	if d.Decode(&decoded) != nil {
+		DPrintf("readPersist data error for server %d", rf.me)
+	} else {
+		rf.mu.Lock()
+		rf.currentTerm = decoded.CurrentTerm
+		rf.votedFor = decoded.VotedFor
+		rf.log = decoded.Log
+		rf.mu.Unlock()
+	}
 }
 
 //
@@ -211,6 +221,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = 2
 		//clear voted for
 		rf.votedFor = -1
+		rf.persist()
 	}
 	lastTerm := 0
 	if len(rf.log) > 0 {
@@ -227,6 +238,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			atomic.StoreInt32(&rf.heartbeat, 1)
 			reply.VoteGranted = true
 			rf.votedFor = int32(args.CandidateId)
+			rf.persist()
 			DPrintf("server %d(%d) vote for server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 		} else {
 			reply.VoteGranted = false
@@ -304,6 +316,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	entry.Command = command
 	rf.mu.Lock()
 	rf.log = append(rf.log, entry)
+	rf.persist()
 	index = len(rf.log)
 	DPrintf("sever: %d new cmd arrives at index: %d, term: %d, log: %+v", rf.me, index, term, rf.log)
 	rf.mu.Unlock()
@@ -359,6 +372,7 @@ func (rf *Raft) processLogReplication() {
 							rf.state = 2
 							isLeader = false
 							rf.currentTerm = reply.Term
+							rf.persist()
 							rf.mu.Unlock()
 							atomic.AddInt32(&count, -1)
 							if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
@@ -539,6 +553,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.state = 2
 	rf.votedFor = -1
 	rf.currentTerm = args.Term
+	rf.persist()
 	atomic.CompareAndSwapInt32(&rf.heartbeat, 0, 1)
 	// compare the log and commitIndex
 	// only when log is consistent can we implement the commit logic
@@ -553,6 +568,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if len(args.Entries) > 0 {
 			DPrintf("server %d entries to append from server %d, entries: %v, prevTerm: %d, prevIndex: %d, leaderterm: %d, followerTerm: %d", rf.me, args.LeaderId, args.Entries, args.PrevLogTerm, args.PrevLogIndex, args.Term, rf.currentTerm)
 			rf.log = append(rf.log[0:args.PrevLogIndex], args.Entries...)
+			rf.persist()
 			DPrintf("server %d append successfully, log: %+v", rf.me, rf.log)
 		} else {
 			DPrintf("server %d received heartbeat", rf.me)
@@ -588,6 +604,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) checkApply(target int32) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	target = minInt(target, int32(len(rf.log)))
 	for i := rf.lastApplied + 1; i <= target; i++ {
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log[i-1].Command
@@ -635,6 +652,7 @@ func (rf *Raft) checkTerm(receivedTerm int32) bool {
 		rf.currentTerm = receivedTerm
 		// turn to follower
 		rf.state = 2
+		rf.persist()
 	}
 	return true
 }
@@ -644,6 +662,7 @@ func (rf *Raft) startElection(termForElection int32) {
 	rf.votedFor = int32(rf.me)
 	rf.state = 3 // turn to candidate
 	rf.currentTerm = termForElection
+	rf.persist()
 	DPrintf("server %d starts an election for term %d\n, peers: %d", rf.me, rf.currentTerm, len(rf.peers))
 	lastLogIndex := len(rf.log)
 	lastLogTerm := 0
@@ -693,6 +712,7 @@ func (rf *Raft) startElection(termForElection int32) {
 						if rf.currentTerm < resp.Term {
 							rf.state = 2
 							rf.currentTerm = resp.Term
+							rf.persist()
 						}
 						rf.mu.Unlock()
 					}
