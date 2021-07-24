@@ -105,14 +105,15 @@ func (e *Entry) String() string {
 func (rf *Raft) GetState() (int, bool) {
 
 	var term int
-	var isleader bool
+	var isLeader bool
 	// Your code here (2A).
 	rf.mu.Lock()
 	term = int(rf.currentTerm)
-	leaderFlag := rf.state
+	if rf.state == 1 {
+		isLeader = true
+	}
 	rf.mu.Unlock()
-	isleader = leaderFlag == 1
-	return term, isleader
+	return term, isLeader
 }
 
 //
@@ -124,6 +125,7 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
+	// only persist the commited logs
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	s := PersistedState{
@@ -227,7 +229,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if len(rf.log) > 0 {
 		lastTerm = rf.log[len(rf.log)-1].Term
 	}
-	if rf.currentTerm > args.Term {
+	if rf.currentTerm > args.Term || lastTerm > args.LastLogTerm {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 		DPrintf("server %d(%d)reject voting server %d(%d)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
@@ -320,67 +322,50 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = len(rf.log)
 	DPrintf("sever: %d new cmd arrives at index: %d, term: %d, log: %+v", rf.me, index, term, rf.log)
 	rf.mu.Unlock()
-	go rf.processLogReplication()
+	// TODO: use batch process to reduce the number of rpcs and go routines
+	rf.processLogReplication()
 	return index, term, isLeader
 }
 
+// problem for commit: new entries keep comming in
+// since log replication would retry indefinitely, we don't need the respChan and commitChan
 func (rf *Raft) processLogReplication() {
-	//TODO: code deduplication
-	respChan := make(chan int)
-	commitChan := make(chan int)
-	// timerChan := make(chan int)
-	// go func() {
-	// 	time.Sleep(150 * time.Millisecond)
-	// 	timerChan <- 1
-	// }()
-
-	count := int32(len(rf.peers) - 1)
-	majority := int32(len(rf.peers) / 2)
-	DPrintf("server %d needs %d yes to commit the command", rf.me, majority)
+	// DPrintf("server %d needs %d yes to commit the command", rf.me, majority)
 	for idx, _ := range rf.peers {
 		if idx != rf.me {
 			go func(i int) {
-				args := &AppendEntriesArgs{}
-				rf.buildAppendEntriesArgs(args, i)
-				reply := &AppendEntriesReply{}
-				DPrintf("send entry to %d", i)
-				rf.sendAppendEntries(i, args, reply)
-				// if not ok the leader will indefinitely retry the RPC
-				term, isLeader := rf.GetState()
-				for isLeader && term == int(args.Term) && !rf.killed() { // only process when rpc call is correctly responsed
+				for !rf.killed() { // only process when rpc call is correctly responsed
+					args := &AppendEntriesArgs{}
+					rf.buildAppendEntriesArgs(args, i)
+					reply := &AppendEntriesReply{}
+					_, isLeader := rf.GetState()
+					if !isLeader {
+						return
+					}
+					rf.sendAppendEntries(i, args, reply)
 					if reply.Success {
-						DPrintf("server %d accepted server %d's append", i, args.LeaderId)
-						atomic.AddInt32(&majority, -1)
-						if atomic.LoadInt32(&majority) == 0 {
-							commitChan <- 1
-						}
+						// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
 						rf.mu.Lock()
 						// nextIndex might be updated already
 						rf.matchIndex[i] = args.PrevLogIndex + len(args.Entries)
 						rf.nextIndex[i] = rf.matchIndex[i] + 1
+						rf.commitIfPossible()
 						rf.mu.Unlock()
-						atomic.AddInt32(&count, -1)
-						if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
-							respChan <- 1
-						}
 						return
 					} else {
 						rf.mu.Lock()
 						// when a server find its current term is smaller
 						// it would turn into follower
 						if rf.currentTerm < reply.Term {
+							DPrintf("server %d append rejected by server %d due to lower term", rf.me, i)
 							rf.state = 2
 							isLeader = false
 							rf.currentTerm = reply.Term
 							rf.persist()
 							rf.mu.Unlock()
-							atomic.AddInt32(&count, -1)
-							if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
-								respChan <- 1
-							}
 							return
 						} else {
-							// TODO: synchronize the log with follower i, can optimize it with term backwards
+							// synchronize the log with follower i, can optimize it with term backwards
 							// decrease the nextIndex, which is initialized to len(leader_log) + 1
 							// append the prev entry at the head and resend the appendRPC
 							// nextIndex shouldn't be smaller than matchIndex
@@ -388,15 +373,8 @@ func (rf *Raft) processLogReplication() {
 							if rf.nextIndex[i] <= rf.matchIndex[i] {
 								rf.nextIndex[i] = rf.matchIndex[i] + 1 // >= 1
 							}
-							DPrintf("follwer %d nextIndex %d", i, rf.nextIndex[i])
+							DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
 							rf.mu.Unlock()
-							//DPrintf("entry: %+v", rf.log[rf.nextIndex[i]-1])
-							args = &AppendEntriesArgs{}
-							//args.Entries = append([]*Entry{rf.log[rf.nextIndex[i]-1]}, args.Entries...)
-							rf.buildAppendEntriesArgs(args, i)
-							reply = &AppendEntriesReply{}
-							rf.sendAppendEntries(i, args, reply)
-							term, isLeader = rf.GetState()
 						}
 					}
 				}
@@ -405,56 +383,72 @@ func (rf *Raft) processLogReplication() {
 			}(idx)
 		}
 	}
-	select {
-	case <-commitChan:
-		rf.mu.Lock()
-		//if it's still leader
-		if rf.state == 1 && !rf.killed() {
-			// send commit grantedRPC(heartbeat) to all followers
-			// rf.commitIndex = int32(len(rf.log))
-			// send the command from old commitIndex to current
-			// TODO: only commit the current term by checking the term of the last entry
-			lastEntryTerm := 0
-			if len(rf.log) > 0 {
-				lastEntryTerm = rf.log[len(rf.log)-1].Term
+}
+
+func (rf *Raft) commitIfPossible() {
+	if rf.state == 1 && !rf.killed() {
+		// rf.commitIndex = int32(len(rf.log))
+		// send the command from old commitIndex to current
+		// FIXMEwhat if the new entries came in-between, is it safe to commit the last entry?
+		majority := len(rf.peers) / 2
+		old := rf.commitIndex
+		start := int(rf.commitIndex + 1)
+		for idx := start; idx <= len(rf.log); idx++ {
+			if rf.log[idx-1].Term == int(rf.currentTerm) { // figure 8
+				n := majority
+				for i, matchedIdx := range rf.matchIndex {
+					if i != rf.me && matchedIdx >= idx {
+						n--
+					}
+				}
+				if n <= 0 {
+					rf.commitIndex = int32(idx)
+				}
 			}
-			if lastEntryTerm == int(rf.currentTerm) {
-				rf.commitIndex = int32(len(rf.log))
-				go rf.checkApply(rf.commitIndex)
-			}
-			DPrintf("current log of leader %d: %+v, commit index: %d", rf.me, rf.log, rf.commitIndex)
 
 		}
-		rf.mu.Unlock()
-	case <-respChan: // rejected or rpc fail
-		rf.mu.Lock()
-		DPrintf("server %d commit not succeed for term %d\n", rf.me, rf.currentTerm)
-		rf.mu.Unlock()
-		// case <-timerChan:
-		// 	rf.mu.Lock()
-		// 	DPrintf("server %d commit not succeed for term %d, due to time out\n", rf.me, rf.currentTerm)
-		// 	rf.mu.Unlock()
-	}
+		if rf.commitIndex > old {
+			go rf.checkApply(rf.commitIndex)
+		}
 
+		DPrintf("current log of leader %d: %+v, commit index: %d", rf.me, rf.log, rf.commitIndex)
+
+	}
+}
+
+func (rf *Raft) checkApply(target int32) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	target = minInt(target, int32(len(rf.log)))
+	for i := rf.lastApplied + 1; i <= target; i++ {
+		var applyMsg ApplyMsg
+		applyMsg.Command = rf.log[i-1].Command
+		applyMsg.CommandIndex = int(i)
+		applyMsg.CommandValid = true
+		rf.applyCh <- applyMsg
+	}
+	rf.lastApplied = target
+	DPrintf("entry %d applied for node %d", rf.lastApplied, rf.me)
 }
 
 func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	// TODO: wrap nextIndex till last entry in leader as entries
+	// TODO wrap nextIndex till last entry in leader as entries
 	// if nextIndex > index of lastEntry then heartbeat
 	// entries are the next[i] to last
 	args.Entries = []*Entry{}
 	// check currentTerm and last entry term
 	// only commit the entry at the currentTerm
-	// but we can send commit one even if its stale
+	// but we can send commit one even if it is stale
 	lastTerm := 0
 	if len(rf.log) > 0 {
 		lastTerm = rf.log[len(rf.log)-1].Term
 	}
 	DPrintf("check stale entry term, currentTerm: %d, lastEntry Term: %d", rf.currentTerm, lastTerm)
 	for j := rf.nextIndex[peer] - 1; j < len(rf.log); j++ {
-		if j <= int(rf.commitIndex) || lastTerm == int(rf.currentTerm) {
+		if j < int(rf.commitIndex) || lastTerm == int(rf.currentTerm) {
+			//rf.log[i] should be copied to avoid shared memory
 			args.Entries = append(args.Entries, rf.log[j])
 		}
 	}
@@ -508,7 +502,7 @@ func (rf *Raft) ticker() {
 			// heartbeat reset to 0
 			if !atomic.CompareAndSwapInt32(&rf.heartbeat, 1, 0) {
 				// increment the current term by one
-				// FIXME: should startElection using another new goroutine?
+				// TODO: should startElection using another new goroutine?
 				rf.startElection(int32(currentTerm) + 1)
 			}
 		} else {
@@ -521,20 +515,6 @@ func (rf *Raft) ticker() {
 	}
 }
 
-// this function send heartbeat to all peers concurrently
-// func (rf *Raft) sendHeartBeat() {
-// 	for idx, _ := range rf.peers {
-// 		if idx != rf.me {
-// 			go func(i int) {
-// 				req := &AppendEntriesArgs{}
-// 				rf.buildAppendEntriesArgs(req, i)
-// 				reply := &AppendEntriesReply{}
-// 				rf.sendAppendEntries(i, req, reply)
-// 			}(idx)
-// 		}
-// 	}
-// }
-
 // This function appendEntries to followers
 // note that this message also establish the leadership, so it will clear the voteFor
 // if the current server is a candidate, it will compare the term
@@ -543,6 +523,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// update term first
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	DPrintf("server %d received leader %d append request: %+v", rf.me, args.LeaderId, args)
 	if rf.currentTerm > args.Term {
 		reply.Success = false
 		reply.Term = rf.currentTerm
@@ -567,9 +548,24 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// append entries from prevLogIndex
 		if len(args.Entries) > 0 {
 			DPrintf("server %d entries to append from server %d, entries: %v, prevTerm: %d, prevIndex: %d, leaderterm: %d, followerTerm: %d", rf.me, args.LeaderId, args.Entries, args.PrevLogTerm, args.PrevLogIndex, args.Term, rf.currentTerm)
-			rf.log = append(rf.log[0:args.PrevLogIndex], args.Entries...)
-			rf.persist()
-			DPrintf("server %d append successfully, log: %+v", rf.me, rf.log)
+			// 2C figure8 unreliable: can't just truncate, but check first
+			// if the entry in the log is not conflict, we shouldn't use the leader's
+			// find the first conflict entry in the follower's log
+			currentIdx := args.PrevLogIndex + 1
+			entryIdx := 0
+			for currentIdx <= len(rf.log) && entryIdx < len(args.Entries) {
+				if rf.log[currentIdx-1].Term != args.Entries[entryIdx].Term {
+					break
+				} else {
+					entryIdx++
+					currentIdx++
+				}
+			}
+			if entryIdx < len(args.Entries) {
+				rf.log = append(rf.log[0:currentIdx-1], args.Entries[entryIdx:]...)
+				rf.persist()
+				DPrintf("server %d append successfully, log: %+v", rf.me, rf.log)
+			}
 		} else {
 			DPrintf("server %d received heartbeat", rf.me)
 		}
@@ -583,7 +579,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	} else {
 		reply.Success = false
 		DPrintf("server %d rejected leader %d, log: %+v, prevIndex: %d, prevTerm: %d, args.prevTerm: %d", rf.me, args.LeaderId, rf.log, args.PrevLogIndex, prevTerm, args.PrevLogTerm)
-		//TODO: reply the conflict term and the first entry for that term
+		//reply the conflict term and the first entry for that term
 		reply.ConflictTerm = prevTerm
 		if len(rf.log) < args.PrevLogIndex {
 			reply.FirstConflictTermEntryIndex = len(rf.log)
@@ -601,24 +597,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Term = rf.currentTerm
 }
 
-func (rf *Raft) checkApply(target int32) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	target = minInt(target, int32(len(rf.log)))
-	for i := rf.lastApplied + 1; i <= target; i++ {
-		var applyMsg ApplyMsg
-		applyMsg.Command = rf.log[i-1].Command
-		applyMsg.CommandIndex = int(i)
-		applyMsg.CommandValid = true
-		rf.applyCh <- applyMsg
-	}
-	rf.lastApplied = target
-}
-
 func (rf *Raft) sendAppendEntries(server int, req *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	// check if rf is still the leader
 	// avoid the bug that buildentry with a new updated term number
-	DPrintf("args: %+v", req)
+	DPrintf("server %d send to server %d args: %+v", req.LeaderId, server, req)
 	ok := rf.peers[server].Call("Raft.AppendEntries", req, reply)
 	return ok
 }
@@ -663,12 +645,12 @@ func (rf *Raft) startElection(termForElection int32) {
 	rf.state = 3 // turn to candidate
 	rf.currentTerm = termForElection
 	rf.persist()
-	DPrintf("server %d starts an election for term %d\n, peers: %d", rf.me, rf.currentTerm, len(rf.peers))
 	lastLogIndex := len(rf.log)
 	lastLogTerm := 0
 	if len(rf.log) > 0 {
 		lastLogTerm = rf.log[lastLogIndex-1].Term
 	}
+	DPrintf("server %d starts an election for term %d\n, peers: %d, last log term: %d,  current log: %+v", rf.me, rf.currentTerm, len(rf.peers), lastLogTerm, rf.log)
 	rf.mu.Unlock()
 
 	respChan := make(chan int)
