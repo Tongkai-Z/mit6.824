@@ -66,7 +66,7 @@ type Raft struct {
 	// persisted state
 	currentTerm int32 //increase monotonically
 	votedFor    int32
-	log         []*Entry // index starting from 1
+	log         *RaftLog // index starting from 1
 
 	applyCh chan ApplyMsg
 	// volatile state
@@ -76,7 +76,8 @@ type Raft struct {
 	// volatiel state on leader
 	nextIndex  []int // optimistic
 	matchIndex []int // pessimistic
-	batchFlag  int32
+	batchFlag  int32 // currently unused
+
 }
 
 type Entry struct {
@@ -135,9 +136,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	entry.Term = term
 	entry.Command = command
 	rf.mu.Lock()
-	rf.log = append(rf.log, entry)
+	rf.log.Append(entry)
 	rf.persist()
-	index = len(rf.log)
+	index = rf.log.Len()
 	DPrintf("sever: %d new cmd arrives at index: %d, term: %d, log: %+v", rf.me, index, term, rf.log)
 	rf.mu.Unlock()
 	// TODO: use batch process to reduce the number of rpcs and go routines
@@ -220,7 +221,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.currentTerm = 0
 	rf.votedFor = -1
-	rf.log = []*Entry{} // slice make(,len,cap)
+	rf.log = &RaftLog{
+		Log:               []*Entry{},
+		LastIncludedIndex: 0,
+		LastIncludedTerm:  0,
+	}
+
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 	rf.state = 2 // initialized as follower
@@ -231,7 +237,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyCh = applyCh
 	rf.heartbeat = 0
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	state := persister.ReadRaftState()
+	sn := persister.ReadSnapshot()
+	rf.readPersist(state, sn)
 
 	// start ticker goroutine to start elections
 	go rf.ticker()

@@ -86,8 +86,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.persist()
 	}
 	lastTerm := 0
-	if len(rf.log) > 0 {
-		lastTerm = rf.log[len(rf.log)-1].Term
+	if rf.log.Len() > 0 {
+		lastTerm = rf.log.GetTerm(rf.log.Len())
 	}
 	if rf.currentTerm > args.Term || lastTerm > args.LastLogTerm {
 		reply.VoteGranted = false
@@ -96,7 +96,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// not candidate
 	} else if rf.votedFor == -1 || rf.votedFor == int32(args.CandidateId) {
 		// candidate is at least up-to-date as receiver
-		if lastTerm < args.LastLogTerm || len(rf.log) <= args.LastLogIndex {
+		if lastTerm < args.LastLogTerm || rf.log.Len() <= args.LastLogIndex {
 			atomic.StoreInt32(&rf.heartbeat, 1)
 			reply.VoteGranted = true
 			rf.votedFor = int32(args.CandidateId)
@@ -122,10 +122,10 @@ func (rf *Raft) startElection(termForElection int32) {
 	rf.state = 3 // turn to candidate
 	rf.currentTerm = termForElection
 	rf.persist()
-	lastLogIndex := len(rf.log)
+	lastLogIndex := rf.log.Len()
 	lastLogTerm := 0
-	if len(rf.log) > 0 {
-		lastLogTerm = rf.log[lastLogIndex-1].Term
+	if rf.log.Len() > 0 {
+		lastLogTerm = rf.log.GetTerm(lastLogIndex)
 	}
 	DPrintf("server %d starts an election for term %d\n, peers: %d, last log term: %d,  current log: %+v", rf.me, rf.currentTerm, len(rf.peers), lastLogTerm, rf.log)
 	rf.mu.Unlock()
@@ -211,7 +211,7 @@ func (rf *Raft) initializeLeaderState() {
 		// initialize the matchIndex and nextIndex
 		rf.nextIndex = make([]int, len(rf.peers))
 		for idx, _ := range rf.nextIndex {
-			rf.nextIndex[idx] = len(rf.log) + 1 // next index to send
+			rf.nextIndex[idx] = rf.log.Len() + 1 // next index to send
 		}
 		rf.matchIndex = make([]int, len(rf.peers))
 		DPrintf("server %d becomes leader in term %d\n", rf.me, rf.currentTerm)
