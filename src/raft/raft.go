@@ -76,6 +76,7 @@ type Raft struct {
 	// volatiel state on leader
 	nextIndex  []int // optimistic
 	matchIndex []int // pessimistic
+	batchFlag  int32
 }
 
 type Entry struct {
@@ -141,7 +142,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Unlock()
 	// TODO: use batch process to reduce the number of rpcs and go routines
 	// 2C: too many existing goroutine
-	rf.processLogReplication()
+	// use heartbeat interval to process log replication in batches
+	//rf.processLogReplication()
 	return index, term, isLeader
 }
 
@@ -225,7 +227,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	numOfPeers := len(peers)
 	rf.nextIndex = make([]int, numOfPeers)
 	rf.matchIndex = make([]int, numOfPeers)
-
+	rf.batchFlag = 0
 	rf.applyCh = applyCh
 	rf.heartbeat = 0
 	// initialize from state persisted before a crash
