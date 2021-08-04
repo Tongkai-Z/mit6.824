@@ -82,70 +82,6 @@ func (rf *Raft) processLogReplication() {
 	}
 }
 
-type InstallSnapshotArgs struct {
-	Term              int32
-	LeaderId          int
-	LastIncludedIndex int
-	LastIncludedTerm  int
-	Data              []byte
-}
-
-type InstallSnapshotReply struct {
-	Term int32
-}
-
-func (rf *Raft) sendInstallSnapshot(peer int) {
-	rf.mu.Lock()
-	req := &InstallSnapshotArgs{
-		Term:              rf.currentTerm,
-		LeaderId:          rf.me,
-		LastIncludedIndex: rf.log.LastIncludedIndex,
-		LastIncludedTerm:  rf.log.LastIncludedTerm,
-		Data:              rf.persister.ReadSnapshot(),
-	}
-	rf.mu.Unlock()
-	reply := &InstallSnapshotReply{}
-	DPrintf("server %d send to server %d args: %+v", req.LeaderId, peer, req)
-	ok := rf.peers[peer].Call("Raft.InstallSnapshot", req, reply)
-	if ok {
-		rf.mu.Lock()
-
-		if reply.Term > rf.currentTerm {
-			DPrintf("server %d append rejected by server %d due to lower term", rf.me, peer)
-			rf.state = 2
-			rf.currentTerm = reply.Term
-			rf.persist()
-		}
-		rf.mu.Unlock()
-	}
-}
-
-// check term and send the snapshot via apply channel
-func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
-	rf.mu.Lock()
-	if rf.currentTerm > args.Term {
-		reply.Term = rf.currentTerm
-		return
-	}
-	reply.Term = args.Term
-	rf.state = 2
-	rf.votedFor = -1
-	rf.currentTerm = args.Term
-	rf.persist()
-	atomic.CompareAndSwapInt32(&rf.heartbeat, 0, 1)
-	rf.mu.Unlock()
-	// send snapshot via apply channel
-	go rf.sendSnapShotToApplyChan(args.Data, args.LastIncludedTerm, args.LastIncludedIndex)
-}
-
-func (rf *Raft) sendSnapShotToApplyChan(snapshot []byte, term, index int) {
-	var applyMsg ApplyMsg
-	applyMsg.Snapshot = snapshot
-	applyMsg.SnapshotIndex = index
-	applyMsg.SnapshotTerm = term
-	rf.applyCh <- applyMsg
-}
-
 func (rf *Raft) commitIfPossible() {
 	if rf.state == 1 && !rf.killed() {
 		// rf.commitIndex = int32(len(rf.log))
@@ -179,17 +115,21 @@ func (rf *Raft) commitIfPossible() {
 
 func (rf *Raft) checkApply(target int32) {
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	target = minInt(target, int32(rf.log.Len()))
+	rf.mu.Unlock()
 	for i := rf.lastApplied + 1; i <= target; i++ {
+		rf.mu.Lock()
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log.Get(int(i)).Command
 		applyMsg.CommandIndex = int(i)
 		applyMsg.CommandValid = true
+		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
 	}
+	rf.mu.Lock()
 	rf.lastApplied = target
 	DPrintf("entry %d applied for node %d", rf.lastApplied, rf.me)
+	rf.mu.Unlock()
 }
 
 func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
@@ -296,6 +236,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			reply.FirstConflictTermEntryIndex = rf.log.Len()
 		} else if prevTerm > 0 {
 			// find the first entry in that term
+			// 8c unreliable too slow
 			for i := args.PrevLogIndex - 1; i >= rf.log.LastIncludedIndex; i-- {
 				if i == rf.log.LastIncludedIndex || rf.log.GetTerm(i) < prevTerm {
 					reply.FirstConflictTermEntryIndex = i + 1

@@ -134,7 +134,7 @@ func (rf *Raft) startElection(termForElection int32) {
 	voteChan := make(chan int)
 	timerChan := make(chan int)
 	go func() {
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		timerChan <- 1
 	}()
 	count := int32(len(rf.peers) - 1)
@@ -154,10 +154,6 @@ func (rf *Raft) startElection(termForElection int32) {
 				// so we shouldn't wait for it to join if we already got majority votes
 				// if majority = 0 we can triger the following logic
 				// wait for majority votes
-				atomic.AddInt32(&count, -1)
-				if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
-					respChan <- 1
-				}
 				if ok {
 					if resp.VoteGranted {
 						atomic.AddInt32(&majority, -1)
@@ -177,6 +173,10 @@ func (rf *Raft) startElection(termForElection int32) {
 					}
 				} else {
 					DPrintf("server %d not respond vote for  leader %d", idx, rf.me)
+				}
+				atomic.AddInt32(&count, -1)
+				if atomic.LoadInt32(&count) == 0 { // guarantee that only one goroutine get 0
+					respChan <- 1
 				}
 			}(index)
 
