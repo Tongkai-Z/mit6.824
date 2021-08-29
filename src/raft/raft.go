@@ -181,7 +181,7 @@ func (rf *Raft) ticker() {
 			// Your code here to check if a leader election should
 			// be started and to randomize sleeping time using
 			// time.Sleep()
-			interval := rand.Intn(150) + 200
+			interval := rand.Intn(300) + 150
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 			// hb := atomic.LoadInt32(&rf.heartbeat)
 			// heartbeat reset to 0
@@ -193,7 +193,7 @@ func (rf *Raft) ticker() {
 		} else {
 			// wins the election turn into leader loop
 			// send out AppendEntries RPC as heartbeat
-			time.Sleep(time.Duration(180) * time.Millisecond)
+			time.Sleep(time.Duration(120) * time.Millisecond)
 			rf.processLogReplication()
 		}
 
