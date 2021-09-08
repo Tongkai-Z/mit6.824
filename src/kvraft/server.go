@@ -37,11 +37,12 @@ type KVServer struct {
 
 	maxraftstate int // snapshot if log grows this big
 
-	ma map[string]string // kv implementation
+	rwLock *sync.RWMutex
+	ma     map[string]string // kv implementation
 	// subscriber map for leader node
 	subscriberMap map[int]chan int
 	//idempotent number
-	serialNumber int64
+	serialMap map[int64]int64
 }
 
 // get can read from any server in majority
@@ -58,19 +59,25 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = "server not leader"
 		return
 	}
-	if atomic.LoadInt64(&kv.serialNumber) == args.SerialNumber {
+	kv.rwLock.RLock()
+	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		reply.Err = "duplicate call"
 		return
-	} else {
-		atomic.StoreInt64(&kv.serialNumber, args.SerialNumber)
 	}
+	kv.rwLock.RUnlock()
+	// update serialMap
+	kv.rwLock.Lock()
+	kv.serialMap[args.ClientID] = args.SerialNumber
+	kv.rwLock.Unlock()
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(commandIndex, sub)
 	DPrintf("[server %d]subscribe for get cmd %d, key: %s", kv.me, commandIndex, args.Key)
 	<-sub
 	DPrintf("[server %d]get cmd %d, key: %s notified", kv.me, commandIndex, args.Key)
+	kv.rwLock.RLock()
 	reply.Value = kv.ma[args.Key]
+	kv.rwLock.RUnlock()
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -84,13 +91,18 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = "server not leader"
 		return
 	}
-	if atomic.LoadInt64(&kv.serialNumber) == args.SerialNumber {
+
+	kv.rwLock.RLock()
+	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		reply.Err = "duplicate call"
 		return
-	} else {
-		atomic.StoreInt64(&kv.serialNumber, args.SerialNumber)
-		DPrintf("update serial number server %d", kv.me)
 	}
+	kv.rwLock.RUnlock()
+	// update serialMap
+	kv.rwLock.Lock()
+	kv.serialMap[args.ClientID] = args.SerialNumber
+	kv.rwLock.Unlock()
+
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(commandIndex, sub)
@@ -148,7 +160,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.ma = make(map[string]string)
 	kv.subscriberMap = make(map[int]chan int)
-
+	kv.rwLock = new(sync.RWMutex)
+	kv.serialMap = make(map[int64]int64)
 	go kv.applyObserver()
 
 	return kv
@@ -177,8 +190,8 @@ func (kv *KVServer) applyObserver() {
 
 func (kv *KVServer) applyCommand(op *Op) {
 	// discard get
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
+	kv.rwLock.Lock()
+	defer kv.rwLock.Unlock()
 	if op.OpName == PutAppendOp {
 		args := op.Args.(*PutAppendArgs)
 		putOrAppend := args.Op

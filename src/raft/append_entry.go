@@ -116,8 +116,9 @@ func (rf *Raft) commitIfPossible() {
 func (rf *Raft) checkApply(target int32) {
 	rf.mu.Lock()
 	target = minInt(target, int32(rf.log.Len()))
+	lastApplied := rf.lastApplied
 	rf.mu.Unlock()
-	for i := rf.lastApplied + 1; i <= target; i++ {
+	for i := lastApplied + 1; i <= target; i++ {
 		rf.mu.Lock()
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log.Get(int(i)).Command

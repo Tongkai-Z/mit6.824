@@ -14,8 +14,7 @@ type PutAppendArgs struct {
 	Value        string
 	Op           string // "Put" or "Append"
 	SerialNumber int64
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+	ClientID     int64
 }
 
 type PutAppendReply struct {
@@ -25,6 +24,7 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key          string
 	SerialNumber int64
+	ClientID     int64
 }
 
 type GetReply struct {

@@ -4,16 +4,23 @@ import (
 	"crypto/rand"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"6.824/labrpc"
 )
 
+const (
+	InitialSerialNumber = 1
+)
+
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
-	prefer int // prefered servered set by last successful call
-	mu     sync.Mutex
+	prefer       int // prefered servered set by last successful call
+	mu           sync.Mutex
+	serialNumber int64
+	clientID     int64
 }
 
 func nrand() int64 {
@@ -26,6 +33,8 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
+	ck.serialNumber = InitialSerialNumber
+	ck.clientID = nrand()
 	// You'll have to add code here.
 	return ck
 }
@@ -43,11 +52,14 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-	DPrintf("[clerk] called get for key %s", key)
+	DPrintf("[clerk %d] called get for key %s", ck.clientID, key)
 	args := &GetArgs{
 		Key:          key,
-		SerialNumber: nrand(),
+		SerialNumber: atomic.LoadInt64(&ck.serialNumber),
+		ClientID:     ck.clientID,
 	}
+	// increase serialnumber
+	atomic.AddInt64(&ck.serialNumber, 1)
 	// set the timer
 	const timeout = 1 * time.Second
 	t := time.NewTimer(timeout)
@@ -74,10 +86,10 @@ func (ck *Clerk) Get(key string) string {
 				if reply.Err == "" {
 					//update prefer
 					prefer = cur
-					DPrintf("[clerk] get operation by server %d finished", cur)
+					DPrintf("[clerk %d] get operation by server %d finished", ck.clientID, cur)
 					done <- reply // success
 				} else {
-					DPrintf("[clerk] get err by server %d: %s", cur, reply.Err)
+					DPrintf("[clerk %d] get err by server %d: %s", ck.clientID, cur, reply.Err)
 				}
 			}
 		}()
@@ -87,7 +99,7 @@ func (ck *Clerk) Get(key string) string {
 		case <-t.C:
 			// timeout
 			offset++
-			DPrintf("[clerk] get operation by server %d time out", cur)
+			DPrintf("[clerk %d] get operation by server %d time out", ck.clientID, cur)
 			t.Reset(timeout)
 		}
 	}
@@ -104,13 +116,15 @@ Done:
 // iterate the servers until it get the correct response
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	DPrintf("[clerk] called putAppend for key %s, val %s", key, value)
+	DPrintf("[clerk %d] called putAppend for key %s, val %s", ck.clientID, key, value)
 	args := &PutAppendArgs{
 		Key:          key,
 		Value:        value,
 		Op:           op,
-		SerialNumber: nrand(),
+		SerialNumber: atomic.LoadInt64(&ck.serialNumber),
+		ClientID:     ck.clientID,
 	}
+	atomic.AddInt64(&ck.serialNumber, 1)
 	// set the timer
 	const timeout = 1 * time.Second
 	t := time.NewTimer(timeout)
@@ -135,10 +149,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			if success {
 				if reply.Err == "" {
 					prefer = cur
-					DPrintf("[clerk] put operation by server %d finished", cur)
+					DPrintf("[clerk %d] put operation by server %d finished", ck.clientID, cur)
 					done <- reply // success
 				} else {
-					DPrintf("[clerk] put err by server %d:  %s", cur, reply.Err)
+					DPrintf("[clerk %d] put err by server %d:  %s", ck.clientID, cur, reply.Err)
 				}
 			}
 		}()
@@ -148,7 +162,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		case <-t.C:
 			// timeout
 			offset++
-			DPrintf("[clerk] put operation by server %d time out", cur)
+			DPrintf("[clerk %d] put operation by server %d time out", ck.clientID, cur)
 			t.Reset(timeout)
 		}
 	}
