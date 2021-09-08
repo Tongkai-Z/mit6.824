@@ -41,8 +41,10 @@ type KVServer struct {
 	ma     map[string]string // kv implementation
 	// subscriber map for leader node
 	subscriberMap map[int]chan int
-	//idempotent number
+	//idempotent number for request
 	serialMap map[int64]int64
+	// applied msg idempotent
+	appliedCmdIdx int64
 }
 
 // get can read from any server in majority
@@ -59,22 +61,19 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = "server not leader"
 		return
 	}
-	kv.rwLock.RLock()
+	kv.rwLock.Lock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		reply.Err = "duplicate call"
 		return
 	}
-	kv.rwLock.RUnlock()
-	// update serialMap
-	kv.rwLock.Lock()
 	kv.serialMap[args.ClientID] = args.SerialNumber
 	kv.rwLock.Unlock()
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(commandIndex, sub)
-	DPrintf("[server %d]subscribe for get cmd %d, key: %s", kv.me, commandIndex, args.Key)
+	DPrintf("[server %d]subscribe for get cmd %d, key: %s from [clerk %d]", kv.me, commandIndex, args.Key, args.ClientID)
 	<-sub
-	DPrintf("[server %d]get cmd %d, key: %s notified", kv.me, commandIndex, args.Key)
+	DPrintf("[server %d]get cmd %d, notified from [clerk %d]", kv.me, commandIndex, args.ClientID)
 	kv.rwLock.RLock()
 	reply.Value = kv.ma[args.Key]
 	kv.rwLock.RUnlock()
@@ -92,22 +91,20 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 
-	kv.rwLock.RLock()
+	kv.rwLock.Lock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		reply.Err = "duplicate call"
 		return
 	}
-	kv.rwLock.RUnlock()
-	// update serialMap
-	kv.rwLock.Lock()
 	kv.serialMap[args.ClientID] = args.SerialNumber
 	kv.rwLock.Unlock()
 
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(commandIndex, sub)
-	DPrintf("[server %d] subscribe for putAppend cmd %d, key: %s, val: %s", kv.me, commandIndex, args.Key, args.Value)
+	DPrintf("[server %d]subscribe for putAppend cmd %d, key: %s, val: %s, from [clerk %d]", kv.me, commandIndex, args.Key, args.Value, args.ClientID)
 	<-sub
+	DPrintf("[server %d]put cmd %d, notified from [clerk %d]", kv.me, commandIndex, args.ClientID)
 }
 
 //
@@ -174,12 +171,13 @@ func (kv *KVServer) subscribe(cmdIdx int, subChan chan int) {
 }
 
 // consume the apply msg and if this node is leader publish the msg to subscriber accordingly
+//TODO: inorder to guarantee serialization we must apply first and then publish
 func (kv *KVServer) applyObserver() {
 	for {
 		cmd := <-kv.applyCh
 		// apply this cmd
 		if cmd.CommandValid {
-			go kv.applyCommand(cmd.Command.(*Op))
+			kv.applyCommand(cmd.Command.(*Op), cmd.CommandIndex)
 		}
 		// leader node pub
 		if _, isLeader := kv.rf.GetState(); isLeader {
@@ -188,10 +186,19 @@ func (kv *KVServer) applyObserver() {
 	}
 }
 
-func (kv *KVServer) applyCommand(op *Op) {
-	// discard get
+func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
 	kv.rwLock.Lock()
 	defer kv.rwLock.Unlock()
+	// check applied cmdIdx
+	if cmdIdx <= int(kv.appliedCmdIdx) {
+		return
+	}
+	kv.appliedCmdIdx = int64(cmdIdx)
+	DPrintf("[server %d]cmd %d applied", kv.me, cmdIdx)
+	// discard get
+	if op.OpName == GetOp {
+		return
+	}
 	if op.OpName == PutAppendOp {
 		args := op.Args.(*PutAppendArgs)
 		putOrAppend := args.Op

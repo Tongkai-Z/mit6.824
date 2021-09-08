@@ -1,0 +1,95 @@
+2021/09/08 14:46:32 [clerk 2551072082756654137] called [server 0] putAppend for key 4, val: 
+2021/09/08 14:46:32 [clerk 2551072082756654137] put err by server 0:  server not leader
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 0 time out
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: 
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 2, from [clerk 2551072082756654137] key: 4, val: 
+2021/09/08 14:46:33 [server 4] putAppend cmd 2, from [clerk 2551072082756654137] key: 4, val:  notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 3, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 3 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 0 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 5, from [clerk 2551072082756654137] key: 4, val: x 4 0 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 5, from [clerk 2551072082756654137] key: 4, val: x 4 0 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 6, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 6 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 1 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 8, from [clerk 2551072082756654137] key: 4, val: x 4 1 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 8, from [clerk 2551072082756654137] key: 4, val: x 4 1 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 2 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 10, from [clerk 2551072082756654137] key: 4, val: x 4 2 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 10, from [clerk 2551072082756654137] key: 4, val: x 4 2 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 12, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 12 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 14, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 14 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 15, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 15 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 17, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 17 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 3 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 19, from [clerk 2551072082756654137] key: 4, val: x 4 3 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 19, from [clerk 2551072082756654137] key: 4, val: x 4 3 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 4 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 21, from [clerk 2551072082756654137] key: 4, val: x 4 4 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 21, from [clerk 2551072082756654137] key: 4, val: x 4 4 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 23, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 23 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 5 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 25, from [clerk 2551072082756654137] key: 4, val: x 4 5 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 25, from [clerk 2551072082756654137] key: 4, val: x 4 5 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 6 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 27, from [clerk 2551072082756654137] key: 4, val: x 4 6 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 27, from [clerk 2551072082756654137] key: 4, val: x 4 6 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 29, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 29 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 30, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 30 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 7 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 31, from [clerk 2551072082756654137] key: 4, val: x 4 7 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 31, from [clerk 2551072082756654137] key: 4, val: x 4 7 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 32, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 32 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 8 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 33, from [clerk 2551072082756654137] key: 4, val: x 4 8 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 33, from [clerk 2551072082756654137] key: 4, val: x 4 8 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 9 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 34, from [clerk 2551072082756654137] key: 4, val: x 4 9 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 34, from [clerk 2551072082756654137] key: 4, val: x 4 9 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] putAppend for key 4, val: x 4 10 y
+2021/09/08 14:46:33 [server 4] subscribe for putAppend cmd 35, from [clerk 2551072082756654137] key: 4, val: x 4 10 y
+2021/09/08 14:46:33 [server 4] putAppend cmd 35, from [clerk 2551072082756654137] key: 4, val: x 4 10 y notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] put operation by server 1 finished
+2021/09/08 14:46:33 [clerk 2551072082756654137] called [server 1] get for key 4
+2021/09/08 14:46:33 [server 4]subscribe for get cmd 36, from [clerk 2551072082756654137]  key: 4
+2021/09/08 14:46:33 [server 4]get cmd 36 from [clerk 2551072082756654137], key: 4 notified
+2021/09/08 14:46:33 [clerk 2551072082756654137] get operation by server 1 finished

@@ -52,7 +52,6 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-	DPrintf("[clerk %d] called get for key %s", ck.clientID, key)
 	args := &GetArgs{
 		Key:          key,
 		SerialNumber: atomic.LoadInt64(&ck.serialNumber),
@@ -78,6 +77,7 @@ func (ck *Clerk) Get(key string) string {
 		cur := (prefer + offset) % len(ck.servers)
 		s := ck.servers[cur]
 		reply := new(GetReply)
+		DPrintf("[clerk %d] called get opt to server %d, key %s", ck.clientID, cur, key)
 		go func() {
 			cur := cur
 			// sync
@@ -116,7 +116,6 @@ Done:
 // iterate the servers until it get the correct response
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	DPrintf("[clerk %d] called putAppend for key %s, val %s", ck.clientID, key, value)
 	args := &PutAppendArgs{
 		Key:          key,
 		Value:        value,
@@ -142,6 +141,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		cur := (prefer + offset) % len(ck.servers)
 		s := ck.servers[cur]
 		reply := new(PutAppendReply)
+		DPrintf("[clerk %d] called put operation to server %d, key %s, val %s", ck.clientID, cur, key, value)
 		go func() {
 			// sync
 			cur := cur
