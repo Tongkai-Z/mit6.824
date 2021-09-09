@@ -1,0 +1,482 @@
+Test: unreliable net, many clients (3A) ...
+2021/09/08 12:58:58 [clerk 1359571035055233364] called [server 0] putAppend for key 4, val: 
+2021/09/08 12:58:58 [clerk 2444087363557152901] called [server 0] putAppend for key 3, val: 
+2021/09/08 12:58:58 [clerk 2001926157201696763] called [server 0] putAppend for key 1, val: 
+2021/09/08 12:58:58 [clerk 2970532046145443076] called [server 0] putAppend for key 0, val: 
+2021/09/08 12:58:58 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: 
+2021/09/08 12:58:58 [clerk 2001926157201696763] put err by server 0:  server not leader
+2021/09/08 12:58:58 [clerk 2444087363557152901] put err by server 0:  server not leader
+2021/09/08 12:58:58 [clerk 1359571035055233364] put err by server 0:  server not leader
+2021/09/08 12:58:58 [clerk 2970532046145443076] put err by server 0:  server not leader
+2021/09/08 12:58:59 [clerk 1359571035055233364] put operation by server 0 time out
+2021/09/08 12:58:59 [clerk 1359571035055233364] called [server 1] putAppend for key 4, val: 
+2021/09/08 12:58:59 [clerk 2444087363557152901] put operation by server 0 time out
+2021/09/08 12:58:59 [clerk 2444087363557152901] called [server 1] putAppend for key 3, val: 
+2021/09/08 12:58:59 [clerk 2001926157201696763] put operation by server 0 time out
+2021/09/08 12:58:59 [clerk 2001926157201696763] called [server 1] putAppend for key 1, val: 
+2021/09/08 12:58:59 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: 
+2021/09/08 12:58:59 [clerk 2970532046145443076] put operation by server 0 time out
+2021/09/08 12:58:59 [clerk 2970532046145443076] called [server 1] putAppend for key 0, val: 
+2021/09/08 12:58:59 [clerk 2444087363557152901] put err by server 1:  server not leader
+2021/09/08 12:58:59 [server 1] subscribe for putAppend cmd 1, from [clerk 1283352160218416849] key: 2, val: 
+2021/09/08 12:58:59 [server 1] putAppend cmd 1, from [clerk 1283352160218416849] key: 2, val:  notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] put operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 0 y
+2021/09/08 12:58:59 [clerk 1359571035055233364] put err by server 1:  server not leader
+2021/09/08 12:58:59 [clerk 2001926157201696763] put err by server 1:  server not leader
+2021/09/08 12:58:59 [server 1] subscribe for putAppend cmd 2, from [clerk 1283352160218416849] key: 2, val: x 2 0 y
+2021/09/08 12:58:59 [clerk 2970532046145443076] put err by server 1:  server not leader
+2021/09/08 12:58:59 [server 1] putAppend cmd 2, from [clerk 1283352160218416849] key: 2, val: x 2 0 y notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] put operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] get for key 2
+2021/09/08 12:58:59 [server 1]subscribe for get cmd 3, from [clerk 1283352160218416849]  key: 2
+2021/09/08 12:58:59 [server 1]get cmd 3 from [clerk 1283352160218416849], key: 2 notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] get operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] get for key 2
+2021/09/08 12:58:59 [server 1]subscribe for get cmd 4, from [clerk 1283352160218416849]  key: 2
+2021/09/08 12:58:59 [server 1]get cmd 4 from [clerk 1283352160218416849], key: 2 notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] get operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] get for key 2
+2021/09/08 12:58:59 [server 1]subscribe for get cmd 5, from [clerk 1283352160218416849]  key: 2
+2021/09/08 12:58:59 [server 1]get cmd 5 from [clerk 1283352160218416849], key: 2 notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] get operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 1 y
+2021/09/08 12:58:59 [server 1] subscribe for putAppend cmd 6, from [clerk 1283352160218416849] key: 2, val: x 2 1 y
+2021/09/08 12:58:59 [server 1] putAppend cmd 6, from [clerk 1283352160218416849] key: 2, val: x 2 1 y notified
+2021/09/08 12:58:59 [clerk 1283352160218416849] put operation by server 1 finished
+2021/09/08 12:58:59 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:58:59 [server 1] subscribe for putAppend cmd 7, from [clerk 1283352160218416849] key: 2, val: x 2 2 y
+2021/09/08 12:58:59 [server 1] putAppend cmd 7, from [clerk 1283352160218416849] key: 2, val: x 2 2 y notified
+2021/09/08 12:59:00 [clerk 2970532046145443076] put operation by server 1 time out
+2021/09/08 12:59:00 [clerk 1359571035055233364] put operation by server 1 time out
+2021/09/08 12:59:00 [clerk 1359571035055233364] called [server 2] putAppend for key 4, val: 
+2021/09/08 12:59:00 [clerk 2444087363557152901] put operation by server 1 time out
+2021/09/08 12:59:00 [clerk 2444087363557152901] called [server 2] putAppend for key 3, val: 
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 1 time out
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] putAppend for key 1, val: 
+2021/09/08 12:59:00 [clerk 2970532046145443076] called [server 2] putAppend for key 0, val: 
+2021/09/08 12:59:00 [server 1] subscribe for putAppend cmd 8, from [clerk 2001926157201696763] key: 1, val: 
+2021/09/08 12:59:00 [clerk 2970532046145443076] put err by server 2:  server not leader
+2021/09/08 12:59:00 [clerk 2444087363557152901] put err by server 2:  server not leader
+2021/09/08 12:59:00 [server 1] putAppend cmd 8, from [clerk 2001926157201696763] key: 1, val:  notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] putAppend for key 1, val: x 1 0 y
+2021/09/08 12:59:00 [server 1] subscribe for putAppend cmd 9, from [clerk 2001926157201696763] key: 1, val: x 1 0 y
+2021/09/08 12:59:00 [server 1] putAppend cmd 9, from [clerk 2001926157201696763] key: 1, val: x 1 0 y notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] putAppend for key 1, val: x 1 1 y
+2021/09/08 12:59:00 [server 1] subscribe for putAppend cmd 10, from [clerk 2001926157201696763] key: 1, val: x 1 1 y
+2021/09/08 12:59:00 [server 1] putAppend cmd 10, from [clerk 2001926157201696763] key: 1, val: x 1 1 y notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 11, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 11 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] putAppend for key 1, val: x 1 2 y
+2021/09/08 12:59:00 [server 1] subscribe for putAppend cmd 12, from [clerk 2001926157201696763] key: 1, val: x 1 2 y
+2021/09/08 12:59:00 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:00 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:00 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:00 [server 1] putAppend cmd 12, from [clerk 2001926157201696763] key: 1, val: x 1 2 y notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 13, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 13 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 14, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 14 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 15, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 15 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 16, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 16 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:00 [server 1]subscribe for get cmd 17, from [clerk 2001926157201696763]  key: 1
+2021/09/08 12:59:00 [server 1]get cmd 17 from [clerk 2001926157201696763], key: 1 notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] get operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] putAppend for key 1, val: x 1 3 y
+2021/09/08 12:59:00 [server 1] subscribe for putAppend cmd 18, from [clerk 2001926157201696763] key: 1, val: x 1 3 y
+2021/09/08 12:59:00 [server 1] putAppend cmd 18, from [clerk 2001926157201696763] key: 1, val: x 1 3 y notified
+2021/09/08 12:59:00 [clerk 2001926157201696763] put operation by server 2 finished
+2021/09/08 12:59:00 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:01 [clerk 2970532046145443076] put operation by server 2 time out
+2021/09/08 12:59:01 [clerk 2970532046145443076] called [server 3] putAppend for key 0, val: 
+2021/09/08 12:59:01 [clerk 2444087363557152901] put operation by server 2 time out
+2021/09/08 12:59:01 [clerk 2444087363557152901] called [server 3] putAppend for key 3, val: 
+2021/09/08 12:59:01 [clerk 1359571035055233364] put operation by server 2 time out
+2021/09/08 12:59:01 [clerk 1359571035055233364] called [server 3] putAppend for key 4, val: 
+2021/09/08 12:59:01 [clerk 2444087363557152901] put err by server 3:  server not leader
+2021/09/08 12:59:01 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:01 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:01 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:01 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:01 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:01 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:02 [clerk 1359571035055233364] put operation by server 3 time out
+2021/09/08 12:59:02 [clerk 2444087363557152901] put operation by server 3 time out
+2021/09/08 12:59:02 [clerk 2444087363557152901] called [server 4] putAppend for key 3, val: 
+2021/09/08 12:59:02 [clerk 2970532046145443076] put operation by server 3 time out
+2021/09/08 12:59:02 [clerk 2970532046145443076] called [server 4] putAppend for key 0, val: 
+2021/09/08 12:59:02 [clerk 1359571035055233364] called [server 4] putAppend for key 4, val: 
+2021/09/08 12:59:02 [clerk 1359571035055233364] put err by server 4:  server not leader
+2021/09/08 12:59:02 [clerk 2444087363557152901] put err by server 4:  server not leader
+2021/09/08 12:59:02 [clerk 2970532046145443076] put err by server 4:  server not leader
+2021/09/08 12:59:02 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:02 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:02 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:02 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:02 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:03 [clerk 2970532046145443076] put operation by server 4 time out
+2021/09/08 12:59:03 [clerk 2970532046145443076] called [server 0] putAppend for key 0, val: 
+2021/09/08 12:59:03 [clerk 1359571035055233364] put operation by server 4 time out
+2021/09/08 12:59:03 [clerk 1359571035055233364] called [server 0] putAppend for key 4, val: 
+2021/09/08 12:59:03 [clerk 2444087363557152901] put operation by server 4 time out
+2021/09/08 12:59:03 [clerk 2444087363557152901] called [server 0] putAppend for key 3, val: 
+2021/09/08 12:59:03 [server 1] subscribe for putAppend cmd 19, from [clerk 2970532046145443076] key: 0, val: 
+2021/09/08 12:59:03 [server 1] putAppend cmd 19, from [clerk 2970532046145443076] key: 0, val:  notified
+2021/09/08 12:59:03 [clerk 2970532046145443076] put operation by server 0 finished
+2021/09/08 12:59:03 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:03 [server 1] subscribe for putAppend cmd 20, from [clerk 2444087363557152901] key: 3, val: 
+2021/09/08 12:59:03 [server 1] subscribe for putAppend cmd 21, from [clerk 1359571035055233364] key: 4, val: 
+2021/09/08 12:59:03 [server 1] putAppend cmd 20, from [clerk 2444087363557152901] key: 3, val:  notified
+2021/09/08 12:59:03 [clerk 2444087363557152901] put operation by server 0 finished
+2021/09/08 12:59:03 [server 1] putAppend cmd 21, from [clerk 1359571035055233364] key: 4, val:  notified
+2021/09/08 12:59:03 [clerk 1359571035055233364] put operation by server 0 finished
+2021/09/08 12:59:03 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:03 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:03 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:03 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:03 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:03 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:04 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:04 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:04 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:04 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:04 [clerk 1283352160218416849] put err by server 1:  duplicate call
+2021/09/08 12:59:04 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:04 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:04 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:05 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:05 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:05 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:05 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:05 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:05 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:05 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:05 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:06 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:06 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:06 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:06 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:06 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:06 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:06 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:06 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:06 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:07 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:07 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:07 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:07 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:07 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:07 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:07 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:07 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:08 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:08 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:08 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:08 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:08 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:08 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:08 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:08 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:09 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:09 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:09 [clerk 399224654482504715] get err by server 1: server not leader
+2021/09/08 12:59:09 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:09 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:09 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:09 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:09 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:10 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:10 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:10 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:10 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:10 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:10 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:10 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:10 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:11 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:11 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:11 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:11 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:11 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:11 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:11 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:12 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:12 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:12 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:12 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:12 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:12 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:12 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:13 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:13 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:13 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:13 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:13 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:13 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:13 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:13 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:13 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:14 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:14 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:14 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:14 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:14 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:14 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:14 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:15 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:15 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:15 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:15 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:15 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:15 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:15 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:16 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:16 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:16 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:16 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:16 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:16 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:16 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:16 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:16 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:17 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:17 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:17 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:17 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:17 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:17 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:17 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:17 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:18 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:18 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:18 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:18 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:18 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:18 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:18 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:18 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:18 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:19 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:19 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:19 [clerk 399224654482504715] get err by server 1: server not leader
+2021/09/08 12:59:19 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:19 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:19 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:19 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:19 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:20 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:20 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:20 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:20 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:20 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:20 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:20 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:20 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:21 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:21 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:21 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:21 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:21 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:21 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:21 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:21 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:22 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:22 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:22 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:22 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:22 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:22 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:22 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:22 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:23 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:23 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:23 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:23 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:23 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:23 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:23 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:23 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:23 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:24 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:24 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:24 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:24 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:24 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:24 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:24 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:25 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:25 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:25 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:25 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:25 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:25 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:25 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:25 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:26 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:26 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:26 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:26 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:26 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:26 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:26 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:26 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:26 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:27 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:27 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:27 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:27 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:27 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:27 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:27 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:27 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:28 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:28 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:28 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:28 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:28 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:28 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:28 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:28 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:29 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:29 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:29 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:29 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:29 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:29 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:30 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:30 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:30 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:30 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:30 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:30 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:30 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:31 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:31 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:31 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:31 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:31 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:31 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:31 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:31 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:32 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:32 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:32 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:32 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:32 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:32 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:32 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:32 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:33 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:33 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:33 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:33 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:33 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:33 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:33 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:33 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:33 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:34 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:34 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:34 [clerk 399224654482504715] get err by server 1: server not leader
+2021/09/08 12:59:34 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:34 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:34 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:34 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:34 [clerk 2001926157201696763] get err by server 1: server not leader
+2021/09/08 12:59:35 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:35 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:35 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:35 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:35 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:35 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:35 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:35 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:36 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:36 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:36 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:36 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:36 [clerk 1283352160218416849] put err by server 3:  server not leader
+2021/09/08 12:59:36 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:36 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:36 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:37 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:37 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:37 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:37 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:37 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:37 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:37 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:37 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:38 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:38 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:38 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:38 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:38 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:38 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:38 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:38 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:38 [clerk 2001926157201696763] get err by server 0: server not leader
+2021/09/08 12:59:39 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:39 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:39 [clerk 399224654482504715] get err by server 1: server not leader
+2021/09/08 12:59:39 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:39 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:39 [clerk 2001926157201696763] get operation by server 0 time out
+2021/09/08 12:59:39 [clerk 2001926157201696763] called [server 1] get for key 1
+2021/09/08 12:59:40 [clerk 399224654482504715] get operation by server 1 time out
+2021/09/08 12:59:40 [clerk 399224654482504715] called [server 2] get for key 0
+2021/09/08 12:59:40 [clerk 399224654482504715] get err by server 2: server not leader
+2021/09/08 12:59:40 [clerk 1283352160218416849] put operation by server 1 time out
+2021/09/08 12:59:40 [clerk 1283352160218416849] called [server 2] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:40 [clerk 1283352160218416849] put err by server 2:  server not leader
+2021/09/08 12:59:40 [clerk 2001926157201696763] get operation by server 1 time out
+2021/09/08 12:59:40 [clerk 2001926157201696763] called [server 2] get for key 1
+2021/09/08 12:59:41 [clerk 399224654482504715] get operation by server 2 time out
+2021/09/08 12:59:41 [clerk 399224654482504715] called [server 3] get for key 0
+2021/09/08 12:59:41 [clerk 399224654482504715] get err by server 3: server not leader
+2021/09/08 12:59:41 [clerk 1283352160218416849] put operation by server 2 time out
+2021/09/08 12:59:41 [clerk 1283352160218416849] called [server 3] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:41 [clerk 2001926157201696763] get operation by server 2 time out
+2021/09/08 12:59:41 [clerk 2001926157201696763] called [server 3] get for key 1
+2021/09/08 12:59:41 [clerk 2001926157201696763] get err by server 3: server not leader
+2021/09/08 12:59:42 [clerk 399224654482504715] get operation by server 3 time out
+2021/09/08 12:59:42 [clerk 399224654482504715] called [server 4] get for key 0
+2021/09/08 12:59:42 [clerk 1283352160218416849] put operation by server 3 time out
+2021/09/08 12:59:42 [clerk 1283352160218416849] called [server 4] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:42 [clerk 1283352160218416849] put err by server 4:  server not leader
+2021/09/08 12:59:42 [clerk 2001926157201696763] get operation by server 3 time out
+2021/09/08 12:59:42 [clerk 2001926157201696763] called [server 4] get for key 1
+2021/09/08 12:59:42 [clerk 2001926157201696763] get err by server 4: server not leader
+2021/09/08 12:59:43 [clerk 399224654482504715] get operation by server 4 time out
+2021/09/08 12:59:43 [clerk 399224654482504715] called [server 0] get for key 0
+2021/09/08 12:59:43 [clerk 399224654482504715] get err by server 0: server not leader
+2021/09/08 12:59:43 [clerk 1283352160218416849] put operation by server 4 time out
+2021/09/08 12:59:43 [clerk 1283352160218416849] called [server 0] putAppend for key 2, val: x 2 2 y
+2021/09/08 12:59:43 [clerk 1283352160218416849] put err by server 0:  server not leader
+2021/09/08 12:59:43 [clerk 2001926157201696763] get operation by server 4 time out
+2021/09/08 12:59:43 [clerk 2001926157201696763] called [server 0] get for key 1
+2021/09/08 12:59:44 [clerk 399224654482504715] get operation by server 0 time out
+2021/09/08 12:59:44 [clerk 399224654482504715] called [server 1] get for key 0
+2021/09/08 12:59:44 [clerk 399224654482504715] get err by server 1: server not leader
+2021/09/08 12:59:44 [clerk 1283352160218416849] put operation by server 0 time out
+2021/09/08 12:59:44 [clerk 1283352160218416849] called [server 1] putAppend for key 2, val: x 2 2 y
+signal: interrupt
+FAIL	6.824/kvraft	46.953s
