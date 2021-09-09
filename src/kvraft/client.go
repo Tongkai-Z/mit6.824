@@ -84,12 +84,12 @@ func (ck *Clerk) Get(key string) string {
 			// sync
 			success := s.Call("KVServer.Get", args, reply)
 			if success {
-				if reply.Err == "" {
+				if reply.Err != "server not leader" {
 					//update prefer
 					prefer = cur
 					DPrintf("[clerk %d] get operation serial number %d by server %d finished, key: %s, val: %s", ck.clientID, args.SerialNumber, cur, args.Key, reply.Value)
 					done <- reply // success
-				} else if reply.Err == "server not leader" {
+				} else {
 					switchServer <- reply
 				}
 			}
@@ -153,11 +153,11 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			cur := cur
 			success := s.Call("KVServer.PutAppend", args, reply)
 			if success {
-				if reply.Err == "" {
+				if reply.Err != "server not leader" {
 					prefer = cur
 					DPrintf("[clerk %d] put operation serial number %d by server %d finished", ck.clientID, args.SerialNumber, cur)
 					done <- reply // success
-				} else if reply.Err == "server not leader" {
+				} else {
 					switchServer <- reply
 				}
 			}

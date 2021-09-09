@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Debug       = true
+	Debug       = false
 	GetOp       = "getOperation"
 	PutAppendOp = "putAppendOperation"
 )
@@ -49,15 +49,8 @@ type KVServer struct {
 
 // get can read from any server in majority
 // but get should not read stale data, so easiest way is only reading from leader
+// we can ignore the idempotent check for get, since it has not side effect
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	kv.rwLock.RLock()
-	if kv.serialMap[args.ClientID] >= args.SerialNumber {
-		reply.Err = "duplicate call"
-		kv.rwLock.RUnlock()
-		return
-	}
-	kv.rwLock.RUnlock()
-
 	// make the op
 	op := &Op{
 		OpName: GetOp,
@@ -69,13 +62,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = "server not leader"
 		return
 	}
-	// concurrent write
-	kv.rwLock.Lock()
-	if args.SerialNumber > kv.serialMap[args.ClientID] {
-		kv.serialMap[args.ClientID] = args.SerialNumber
-	}
-	kv.rwLock.Unlock()
-
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(commandIndex, sub)
@@ -90,10 +76,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 }
 
 // only leader can register the serialNumber
+// duplicate put should return normally since the response could be lost due to internet
+// so for processed opts, we should still response gracefully
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.rwLock.RLock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
-		reply.Err = "duplicate call"
 		kv.rwLock.RUnlock()
 		return
 	}
