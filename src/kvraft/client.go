@@ -66,6 +66,7 @@ func (ck *Clerk) Get(key string) string {
 
 	//done chan
 	done := make(chan *GetReply, len(ck.servers))
+	switchServer := make(chan *GetReply, len(ck.servers))
 	var r *GetReply
 
 	offset := 0
@@ -76,20 +77,20 @@ func (ck *Clerk) Get(key string) string {
 	for {
 		cur := (prefer + offset) % len(ck.servers)
 		s := ck.servers[cur]
-		reply := new(GetReply)
-		DPrintf("[clerk %d] called get opt to server %d, key %s", ck.clientID, cur, key)
 		go func() {
 			cur := cur
+			reply := new(GetReply)
+			DPrintf("[clerk %d] called get opt to server %d, key %s", ck.clientID, cur, key)
 			// sync
 			success := s.Call("KVServer.Get", args, reply)
 			if success {
 				if reply.Err == "" {
 					//update prefer
 					prefer = cur
-					DPrintf("[clerk %d] get operation by server %d finished", ck.clientID, cur)
+					DPrintf("[clerk %d] get operation serial number %d by server %d finished, key: %s, val: %s", ck.clientID, args.SerialNumber, cur, args.Key, reply.Value)
 					done <- reply // success
-				} else {
-					DPrintf("[clerk %d] get err by server %d: %s", ck.clientID, cur, reply.Err)
+				} else if reply.Err == "server not leader" {
+					switchServer <- reply
 				}
 			}
 		}()
@@ -100,6 +101,10 @@ func (ck *Clerk) Get(key string) string {
 			// timeout
 			offset++
 			DPrintf("[clerk %d] get operation by server %d time out", ck.clientID, cur)
+			t.Reset(timeout)
+		case <-switchServer:
+			DPrintf("[clerk %d] get not leader err by server %d", ck.clientID, cur)
+			offset++
 			t.Reset(timeout)
 		}
 	}
@@ -131,6 +136,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	//done chan
 	done := make(chan *PutAppendReply, len(ck.servers))
+	switchServer := make(chan *PutAppendReply, len(ck.servers))
 
 	ck.mu.Lock()
 	prefer := ck.prefer
@@ -140,19 +146,19 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	for {
 		cur := (prefer + offset) % len(ck.servers)
 		s := ck.servers[cur]
-		reply := new(PutAppendReply)
 		DPrintf("[clerk %d] called put operation to server %d, key %s, val %s", ck.clientID, cur, key, value)
 		go func() {
 			// sync
+			reply := new(PutAppendReply)
 			cur := cur
 			success := s.Call("KVServer.PutAppend", args, reply)
 			if success {
 				if reply.Err == "" {
 					prefer = cur
-					DPrintf("[clerk %d] put operation by server %d finished", ck.clientID, cur)
+					DPrintf("[clerk %d] put operation serial number %d by server %d finished", ck.clientID, args.SerialNumber, cur)
 					done <- reply // success
-				} else {
-					DPrintf("[clerk %d] put err by server %d:  %s", ck.clientID, cur, reply.Err)
+				} else if reply.Err == "server not leader" {
+					switchServer <- reply
 				}
 			}
 		}()
@@ -163,6 +169,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			// timeout
 			offset++
 			DPrintf("[clerk %d] put operation by server %d time out", ck.clientID, cur)
+			t.Reset(timeout)
+		case <-switchServer:
+			offset++
+			DPrintf("[clerk %d] put not leader err by server %d", ck.clientID, cur)
 			t.Reset(timeout)
 		}
 	}

@@ -144,7 +144,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// TODO: use batch process to reduce the number of rpcs and go routines
 	// 2C: too many existing goroutine
 	// use heartbeat interval to process log replication in batches
-	rf.processLogReplication()
+	go rf.processLogReplication()
 	return index, term, isLeader
 }
 

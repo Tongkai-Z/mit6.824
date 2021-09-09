@@ -10,4 +10,7 @@ finished first two test of lab3A
 Sep 7
 finished the third test of lab3A
 
+Sep 8
+Add deduplication to apply cmd at server
+
 Tongkai Zhang
