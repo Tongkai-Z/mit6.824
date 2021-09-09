@@ -100,7 +100,7 @@ func (ck *Clerk) Get(key string) string {
 		case <-t.C:
 			// timeout
 			offset++
-			DPrintf("[clerk %d] get operation by server %d time out", ck.clientID, cur)
+			DPrintf("[clerk %d] get operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
 		case <-switchServer:
 			DPrintf("[clerk %d] get not leader err by server %d", ck.clientID, cur)
@@ -168,7 +168,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		case <-t.C:
 			// timeout
 			offset++
-			DPrintf("[clerk %d] put operation by server %d time out", ck.clientID, cur)
+			DPrintf("[clerk %d] put operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
 		case <-switchServer:
 			offset++
