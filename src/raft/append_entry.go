@@ -35,10 +35,11 @@ func (rf *Raft) processLogReplication() {
 					}
 					rf.sendAppendEntries(i, args, reply)
 					if reply.Success {
+						//FIXME: note that update to matchIndex and nextIndex is concurrent
 						// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
 						rf.mu.Lock()
 						// nextIndex might be updated already
-						rf.matchIndex[i] = args.PrevLogIndex + len(args.Entries)
+						rf.matchIndex[i] = max(args.PrevLogIndex+len(args.Entries), rf.matchIndex[i])
 						rf.nextIndex[i] = rf.matchIndex[i] + 1
 						rf.commitIfPossible()
 						rf.mu.Unlock()
@@ -60,8 +61,7 @@ func (rf *Raft) processLogReplication() {
 							// decrease the nextIndex, which is initialized to len(leader_log) + 1
 							// append the prev entry at the head and resend the appendRPC
 							// nextIndex shouldn't be smaller than matchIndex
-							rf.nextIndex[i] = reply.FirstConflictTermEntryIndex
-							rf.nextIndex[i] = max(rf.nextIndex[i], rf.matchIndex[i]+1)
+							rf.nextIndex[i] = max(reply.FirstConflictTermEntryIndex, rf.matchIndex[i]+1)
 							DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
 							if rf.nextIndex[i] <= rf.log.LastIncludedIndex { // turn to install snapshot
 								rf.mu.Unlock()
@@ -86,7 +86,8 @@ func (rf *Raft) commitIfPossible() {
 	if rf.state == 1 && !rf.killed() {
 		// rf.commitIndex = int32(len(rf.log))
 		// send the command from old commitIndex to current
-		// FIXMEwhat if the new entries came in-between, is it safe to commit the last entry?
+		// what if the new entries came in-between, is it safe to commit the last entry?
+		// check each entry in (old, lastEntry], if matched by majority then commit
 		majority := len(rf.peers) / 2
 		old := rf.commitIndex
 		start := int(rf.commitIndex + 1)
@@ -169,6 +170,8 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 // note that this message also establish the leadership, so it will clear the voteFor
 // if the current server is a candidate, it will compare the term
 // if currentTerm <= receivedTerm it would turn to follower at once
+// rpc request with overlapping entries might come concurrently,
+// thus we only append the conflict part between the follower and leader each time
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	// update term first
 	rf.mu.Lock()

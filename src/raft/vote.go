@@ -211,9 +211,9 @@ func (rf *Raft) initializeLeaderState() {
 		// initialize the matchIndex and nextIndex
 		rf.nextIndex = make([]int, len(rf.peers))
 		for idx, _ := range rf.nextIndex {
-			rf.nextIndex[idx] = rf.log.Len() + 1 // next index to send
+			rf.nextIndex[idx] = rf.log.Len() + 1 // initialized to leader last log index + 1
 		}
-		rf.matchIndex = make([]int, len(rf.peers))
+		rf.matchIndex = make([]int, len(rf.peers)) // initialized to 0
 		DPrintf("server %d becomes leader in term %d\n", rf.me, rf.currentTerm)
 	} else { // already turn to follower due to other term exchange rpc
 		DPrintf("server %d lose election for term %d\n", rf.me, rf.currentTerm)

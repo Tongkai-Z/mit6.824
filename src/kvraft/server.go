@@ -44,7 +44,7 @@ type KVServer struct {
 	//idempotent number for request
 	serialMap map[int64]int64
 	// applied msg idempotent
-	appliedCmdIdx int64
+	appliedMap map[int64]int64
 }
 
 // get can read from any server in majority
@@ -162,6 +162,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.subscriberMap = make(map[int]chan int)
 	kv.rwLock = new(sync.RWMutex)
 	kv.serialMap = make(map[int64]int64)
+	kv.appliedMap = make(map[int64]int64)
 	go kv.applyObserver()
 
 	return kv
@@ -192,21 +193,24 @@ func (kv *KVServer) applyObserver() {
 func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
 	kv.rwLock.Lock()
 	defer kv.rwLock.Unlock()
-	// check applied cmdIdx
-	//TODO: can we guanrantee that the cmd comes in the same order as cmdIdx
-	if cmdIdx <= int(kv.appliedCmdIdx) {
-		return
-	}
-	kv.appliedCmdIdx = int64(cmdIdx)
 
 	// discard get
 	if op.OpName == GetOp {
+		args := op.Args.(*GetArgs)
 		DPrintf("[server %d]get cmd %d serial number %d from client %d applied key: %s, val: %s",
-			kv.me, cmdIdx, op.Args.(*GetArgs).SerialNumber, op.Args.(*GetArgs).ClientID, op.Args.(*GetArgs).Key, kv.ma[op.Args.(*GetArgs).Key])
+			kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
 		return
 	}
 	if op.OpName == PutAppendOp {
 		args := op.Args.(*PutAppendArgs)
+		if kv.appliedMap[args.ClientID] >= args.SerialNumber {
+			//already applied
+			DPrintf("[server %d]putAppend cmd %d serial number %d from client %d duplicate call, key: %s, val: %s",
+				kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+			return
+		}
+		// update apply map
+		kv.appliedMap[args.ClientID] = args.SerialNumber
 		putOrAppend := args.Op
 		if putOrAppend == "Append" {
 			kv.ma[args.Key] = kv.ma[args.Key] + args.Value
