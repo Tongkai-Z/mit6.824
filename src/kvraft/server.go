@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Debug       = true
+	Debug       = false
 	GetOp       = "getOperation"
 	PutAppendOp = "putAppendOperation"
 )
@@ -189,26 +189,33 @@ func (kv *KVServer) applyObserver() {
 	for cmd := range kv.applyCh {
 		// apply this cmd
 		if cmd.CommandValid {
-			kv.applyCommand(cmd.Command.(*Op), cmd.CommandIndex)
+			applied := kv.applyCommand(cmd.Command.(*Op), cmd.CommandIndex)
 			// leader node pub
-			if _, isLeader := kv.rf.GetState(); isLeader {
-				kv.publishCommand(cmd.Command.(*Op).SerialNumber)
+			if applied {
+				if _, isLeader := kv.rf.GetState(); isLeader {
+					kv.publishCommand(cmd.Command.(*Op).SerialNumber)
+				}
 			}
 		}
 
 	}
 }
 
-func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
+func (kv *KVServer) applyCommand(op *Op, cmdIdx int) bool {
 	kv.rwLock.Lock()
 	defer kv.rwLock.Unlock()
 
-	// discard get
 	if op.OpName == GetOp {
 		args := op.Args.(*GetArgs)
+		if kv.appliedMap[args.ClientID] >= args.SerialNumber {
+			//already applied
+			DPrintf("[server %d]putAppend cmd %d serial number %d from client %d duplicate call, key: %s, val: %s",
+				kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+			return false
+		}
 		DPrintf("[server %d]get cmd %d serial number %d from client %d applied key: %s, val: %s",
 			kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
-		return
+		return true
 	}
 	if op.OpName == PutAppendOp {
 		args := op.Args.(*PutAppendArgs)
@@ -216,7 +223,7 @@ func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
 			//already applied
 			DPrintf("[server %d]putAppend cmd %d serial number %d from client %d duplicate call, key: %s, val: %s",
 				kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
-			return
+			return false
 		}
 		// update apply map
 		kv.appliedMap[args.ClientID] = args.SerialNumber
@@ -229,8 +236,10 @@ func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
 		DPrintf("[server %d]putAppend cmd %d serial number %d from client %d applied, key: %s, val: %s",
 			kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
 	}
+	return true
 }
 
+//FIXME: two client with same serialNumber issue
 func (kv *KVServer) publishCommand(serialNumber int64) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
