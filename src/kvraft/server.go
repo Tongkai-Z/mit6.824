@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Debug       = false
+	Debug       = true
 	GetOp       = "getOperation"
 	PutAppendOp = "putAppendOperation"
 )

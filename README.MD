@@ -24,4 +24,9 @@ Sep 13
 
 test(partitions, one client (3A)) passed by handling the duplicate call when origin one is still in processing
 
+Sep 14
+
+fix bug in raft::checkApply(), multi-thread apply should avoid duplicate apply as much as possible
+restart test failed due to not linearizable 
+
 Tongkai Zhang

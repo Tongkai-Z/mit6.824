@@ -52,6 +52,9 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.log.LastIncludedTerm = rf.log.Get(index).Term
 	rf.log.Log = rf.log.SliceToTail(index + 1)
 	rf.log.LastIncludedIndex = index
+	if rf.lastApplied < int32(index) {
+		rf.lastApplied = int32(index)
+	}
 	rf.persister.SaveStateAndSnapshot(rf.getStateBytes(), snapshot)
 	DPrintf("server %d persists its state to snapshot", rf.me)
 }

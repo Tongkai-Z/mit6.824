@@ -106,7 +106,7 @@ func (rf *Raft) commitIfPossible() {
 
 		}
 		if rf.commitIndex > old {
-			go rf.checkApply(rf.commitIndex)
+			go rf.checkApply()
 		}
 
 		DPrintf("current log of leader %d: %+v, commit index: %d", rf.me, rf.log, rf.commitIndex)
@@ -114,24 +114,37 @@ func (rf *Raft) commitIfPossible() {
 	}
 }
 
-func (rf *Raft) checkApply(target int32) {
+//concurrent check apply update issue:
+// lastApplied updated by another goroutine
+// how to decrease the  duplicate cmd sent to apply chan
+func (rf *Raft) checkApply() {
 	rf.mu.Lock()
-	target = minInt(target, int32(rf.log.Len()))
+	target := rf.commitIndex
 	lastApplied := rf.lastApplied
 	rf.mu.Unlock()
+
 	for i := lastApplied + 1; i <= target; i++ {
 		rf.mu.Lock()
+		if rf.lastApplied >= i { // update by another thread
+			rf.mu.Unlock()
+			continue
+		}
+		DPrintf("Server %d Applying command index %d, last applied: %d, lastIncludedIndex: %d", rf.me, i, rf.lastApplied, rf.log.LastIncludedIndex)
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log.Get(int(i)).Command
 		applyMsg.CommandIndex = int(i)
 		applyMsg.CommandValid = true
 		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
+
+		rf.mu.Lock()
+		if rf.lastApplied < i {
+			rf.lastApplied = i
+		}
+		DPrintf("entry %d applied for server %d", rf.lastApplied, rf.me)
+		rf.mu.Unlock()
 	}
-	rf.mu.Lock()
-	rf.lastApplied = target
-	DPrintf("entry %d applied for node %d", rf.lastApplied, rf.me)
-	rf.mu.Unlock()
+
 }
 
 func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
@@ -224,9 +237,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			DPrintf("server %d received heartbeat", rf.me)
 		}
 
+		//FIXME: log consistent with leader?
 		if args.LeaderCommit > rf.commitIndex {
 			rf.commitIndex = args.LeaderCommit
-			go rf.checkApply(args.LeaderCommit)
+			go rf.checkApply()
 		}
 		reply.Success = true
 
