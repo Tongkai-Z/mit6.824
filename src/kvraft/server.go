@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Debug       = false
+	Debug       = true
 	GetOp       = "getOperation"
 	PutAppendOp = "putAppendOperation"
 )
@@ -26,6 +26,7 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 type Op struct {
 	OpName       string
 	SerialNumber int64
+	ClientID     int64
 	Args         interface{}
 }
 
@@ -41,7 +42,7 @@ type KVServer struct {
 	rwLock *sync.RWMutex
 	ma     map[string]string // kv implementation
 	// subscriber map for leader node
-	subscriberMap map[int64]chan int
+	subscriberMap map[int64]map[int64]chan int
 	//idempotent number for request
 	serialMap map[int64]int64
 	// applied msg idempotent
@@ -57,6 +58,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		OpName:       GetOp,
 		Args:         args,
 		SerialNumber: args.SerialNumber,
+		ClientID:     args.ClientID,
 	}
 	commandIndex, _, isLeader := kv.rf.Start(op)
 	// not leader return error
@@ -66,7 +68,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
-	kv.subscribe(args.SerialNumber, sub)
+	//FIXME: duplicate get overwrite former chan
+	kv.subscribe(args.ClientID, args.SerialNumber, sub)
 	DPrintf("[server %d]subscribe for get cmd %d, key: %s from [clerk %d] serial number: %d", kv.me, commandIndex, args.Key, args.ClientID, args.SerialNumber)
 	<-sub
 	DPrintf("[server %d]get cmd %d, notified from [clerk %d] serial number: %d", kv.me, commandIndex, args.ClientID, args.SerialNumber)
@@ -87,8 +90,10 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		kv.mu.Lock()
 		defer kv.mu.Unlock()
 		// check if the request is still in progress
-		if _, ok := kv.subscriberMap[args.SerialNumber]; ok {
-			reply.Err = "duplicate call, still in processing"
+		if sub, ok := kv.subscriberMap[args.ClientID]; ok {
+			if _, ok := sub[args.SerialNumber]; ok {
+				reply.Err = "duplicate call, still in processing"
+			}
 		}
 		return
 	}
@@ -98,6 +103,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		OpName:       PutAppendOp,
 		Args:         args,
 		SerialNumber: args.SerialNumber,
+		ClientID:     args.ClientID,
 	}
 	commandIndex, _, isLeader := kv.rf.Start(op)
 	// not leader return error
@@ -113,7 +119,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
-	kv.subscribe(args.SerialNumber, sub)
+	kv.subscribe(args.ClientID, args.SerialNumber, sub)
 	DPrintf("[server %d]subscribe for putAppend cmd %d, key: %s, val: %s, from [clerk %d] serial number: %d", kv.me, commandIndex, args.Key, args.Value, args.ClientID, args.SerialNumber)
 	<-sub
 	DPrintf("[server %d]put cmd %d, notified from [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, args.Value)
@@ -168,7 +174,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.ma = make(map[string]string)
-	kv.subscriberMap = make(map[int64]chan int)
+	kv.subscriberMap = make(map[int64]map[int64]chan int)
 	kv.rwLock = new(sync.RWMutex)
 	kv.serialMap = make(map[int64]int64)
 	kv.appliedMap = make(map[int64]int64)
@@ -177,10 +183,13 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	return kv
 }
 
-func (kv *KVServer) subscribe(serialNumber int64, subChan chan int) {
+func (kv *KVServer) subscribe(clientID, serialNumber int64, subChan chan int) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	kv.subscriberMap[serialNumber] = subChan
+	if kv.subscriberMap[clientID] == nil {
+		kv.subscriberMap[clientID] = make(map[int64]chan int)
+	}
+	kv.subscriberMap[clientID][serialNumber] = subChan
 }
 
 // consume the apply msg and if this node is leader publish the msg to subscriber accordingly
@@ -189,33 +198,25 @@ func (kv *KVServer) applyObserver() {
 	for cmd := range kv.applyCh {
 		// apply this cmd
 		if cmd.CommandValid {
-			applied := kv.applyCommand(cmd.Command.(*Op), cmd.CommandIndex)
+			kv.applyCommand(cmd.Command.(*Op), cmd.CommandIndex)
 			// leader node pub
-			if applied {
-				if _, isLeader := kv.rf.GetState(); isLeader {
-					kv.publishCommand(cmd.Command.(*Op).SerialNumber)
-				}
+			if _, isLeader := kv.rf.GetState(); isLeader {
+				kv.publishCommand(cmd.Command.(*Op).ClientID, cmd.Command.(*Op).SerialNumber)
 			}
 		}
 
 	}
 }
 
-func (kv *KVServer) applyCommand(op *Op, cmdIdx int) bool {
+func (kv *KVServer) applyCommand(op *Op, cmdIdx int) {
 	kv.rwLock.Lock()
 	defer kv.rwLock.Unlock()
 
 	if op.OpName == GetOp {
 		args := op.Args.(*GetArgs)
-		if kv.appliedMap[args.ClientID] >= args.SerialNumber {
-			//already applied
-			DPrintf("[server %d]putAppend cmd %d serial number %d from client %d duplicate call, key: %s, val: %s",
-				kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
-			return false
-		}
 		DPrintf("[server %d]get cmd %d serial number %d from client %d applied key: %s, val: %s",
 			kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
-		return true
+		return
 	}
 	if op.OpName == PutAppendOp {
 		args := op.Args.(*PutAppendArgs)
@@ -223,7 +224,7 @@ func (kv *KVServer) applyCommand(op *Op, cmdIdx int) bool {
 			//already applied
 			DPrintf("[server %d]putAppend cmd %d serial number %d from client %d duplicate call, key: %s, val: %s",
 				kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
-			return false
+			return
 		}
 		// update apply map
 		kv.appliedMap[args.ClientID] = args.SerialNumber
@@ -236,15 +237,15 @@ func (kv *KVServer) applyCommand(op *Op, cmdIdx int) bool {
 		DPrintf("[server %d]putAppend cmd %d serial number %d from client %d applied, key: %s, val: %s",
 			kv.me, cmdIdx, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
 	}
-	return true
 }
 
-//FIXME: two client with same serialNumber issue
-func (kv *KVServer) publishCommand(serialNumber int64) {
+func (kv *KVServer) publishCommand(clientID, serialNumber int64) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	if ch, ok := kv.subscriberMap[serialNumber]; ok {
-		close(ch)
-		delete(kv.subscriberMap, serialNumber)
+	if sub, ok := kv.subscriberMap[clientID]; ok {
+		if ch, ok := sub[serialNumber]; ok {
+			close(ch)
+			delete(sub, serialNumber)
+		}
 	}
 }
