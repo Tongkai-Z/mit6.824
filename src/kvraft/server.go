@@ -36,6 +36,7 @@ type KVServer struct {
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 	dead    int32 // set by Kill()
+	term    int32
 
 	maxraftstate int // snapshot if log grows this big
 
@@ -53,6 +54,23 @@ type KVServer struct {
 // but get should not read stale data, so easiest way is only reading from leader
 // we can ignore the idempotent check for get, since it has not side effect
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+	// check current term
+	if !kv.checkTerm() {
+		// not leader return error
+		reply.Err = "server not leader"
+		return
+	}
+
+	kv.mu.Lock()
+	// check if the request is still in progress
+	if sub, ok := kv.subscriberMap[args.ClientID]; ok {
+		if _, ok := sub[args.SerialNumber]; ok {
+			reply.Err = "duplicate call, still in processing"
+			kv.mu.Unlock()
+			return
+		}
+	}
+	kv.mu.Unlock()
 	// make the op
 	op := &Op{
 		OpName:       GetOp,
@@ -83,19 +101,33 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 // only leader can register the serialNumber
 // duplicate put should return normally since the response could be lost due to internet
 // so for processed opts, we should still response gracefully
+//TODO: 新term的重复请求被放行的话，怎么回收之前那个被监听的chan，并返回err
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
+	// check current term
+	if !kv.checkTerm() {
+		// not leader return error
+		reply.Err = "server not leader"
+		return
+	}
+
+	// check if this opt is in process
+	kv.mu.Lock()
+	// check if the request is still in progress
+	if sub, ok := kv.subscriberMap[args.ClientID]; ok {
+		if _, ok := sub[args.SerialNumber]; ok {
+			reply.Err = "duplicate call, still in processing"
+			kv.mu.Unlock()
+			return
+		}
+	}
+	kv.mu.Unlock()
+
+	//idempotent
 	kv.rwLock.RLock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		kv.rwLock.RUnlock()
-		kv.mu.Lock()
-		defer kv.mu.Unlock()
-		// check if the request is still in progress
-		if sub, ok := kv.subscriberMap[args.ClientID]; ok {
-			if _, ok := sub[args.SerialNumber]; ok {
-				reply.Err = "duplicate call, still in processing"
-			}
-		}
 		return
+
 	}
 	kv.rwLock.RUnlock()
 
@@ -111,18 +143,36 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = "server not leader"
 		return
 	}
-	kv.rwLock.Lock()
-	if args.SerialNumber > kv.serialMap[args.ClientID] {
-		kv.serialMap[args.ClientID] = args.SerialNumber
-	}
-	kv.rwLock.Unlock()
 
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
 	kv.subscribe(args.ClientID, args.SerialNumber, sub)
 	DPrintf("[server %d]subscribe for putAppend cmd %d, key: %s, val: %s, from [clerk %d] serial number: %d", kv.me, commandIndex, args.Key, args.Value, args.ClientID, args.SerialNumber)
 	<-sub
+
+	kv.rwLock.Lock()
+	if args.SerialNumber > kv.serialMap[args.ClientID] {
+		kv.serialMap[args.ClientID] = args.SerialNumber
+	}
+	kv.rwLock.Unlock()
 	DPrintf("[server %d]put cmd %d, notified from [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, args.Value)
+}
+
+// compare leader term with kv term
+func (kv *KVServer) checkTerm() bool {
+	term, isLeader := kv.rf.GetState()
+	if !isLeader {
+		return false
+	}
+	if atomic.LoadInt32(&kv.term) < int32(term) {
+		atomic.StoreInt32(&kv.term, int32(term))
+		// clear kv.sub
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		if kv.subscriberMap[clientID] == nil {
+			kv.subscriberMap[clientID] = make(map[int64]chan int)
+		}
+	}
 }
 
 //

@@ -86,7 +86,9 @@ func (ck *Clerk) Get(key string) string {
 			if success {
 				if reply.Err == "" {
 					//update prefer
-					prefer = cur
+					ck.mu.Lock()
+					ck.prefer = cur
+					ck.mu.Unlock()
 					DPrintf("[clerk %d] get operation serial number %d by server %d finished, key: %s, val: %s", ck.clientID, args.SerialNumber, cur, args.Key, reply.Value)
 					done <- reply // success
 				} else {
@@ -102,17 +104,14 @@ func (ck *Clerk) Get(key string) string {
 			offset++
 			DPrintf("[clerk %d] get operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
-		case <-retry:
-			DPrintf("[clerk %d] get not leader err by server %d", ck.clientID, cur)
+		case re := <-retry:
+			DPrintf("[clerk %d] get err %s by server %d", ck.clientID, re.Err, cur)
 			offset++
 			t.Reset(timeout)
 		}
 	}
 
 Done:
-	ck.mu.Lock()
-	ck.prefer = prefer
-	ck.mu.Unlock()
 	return r.Value
 }
 
@@ -154,7 +153,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			success := s.Call("KVServer.PutAppend", args, reply)
 			if success {
 				if reply.Err == "" {
-					prefer = cur
+					ck.mu.Lock()
+					ck.prefer = cur
+					ck.mu.Unlock()
 					DPrintf("[clerk %d] put operation serial number %d by server %d finished", ck.clientID, args.SerialNumber, cur)
 					done <- reply // success
 				} else {
@@ -164,22 +165,18 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		}()
 		select {
 		case <-done:
-			goto Done
+			return
 		case <-t.C:
 			// timeout
 			offset++
 			DPrintf("[clerk %d] put operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
-		case <-retry:
+		case r := <-retry:
 			offset++
-			DPrintf("[clerk %d] put not leader err by server %d", ck.clientID, cur)
+			DPrintf("[clerk %d] put err %s by server %d", ck.clientID, r.Err, cur)
 			t.Reset(timeout)
 		}
 	}
-Done:
-	ck.mu.Lock()
-	ck.prefer = prefer
-	ck.mu.Unlock()
 }
 
 func (ck *Clerk) Put(key string, value string) {

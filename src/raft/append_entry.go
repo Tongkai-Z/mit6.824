@@ -1,6 +1,9 @@
 package raft
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type AppendEntriesArgs struct {
 	Term         int32
@@ -33,47 +36,52 @@ func (rf *Raft) processLogReplication() {
 					if !isLeader {
 						return
 					}
-					rf.sendAppendEntries(i, args, reply)
-					if reply.Success {
-						//FIXME: note that update to matchIndex and nextIndex is concurrent
-						// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
-						rf.mu.Lock()
-						// nextIndex might be updated already
-						rf.matchIndex[i] = max(args.PrevLogIndex+len(args.Entries), rf.matchIndex[i])
-						rf.nextIndex[i] = rf.matchIndex[i] + 1
-						rf.commitIfPossible()
-						rf.mu.Unlock()
-						return
-					} else {
-						rf.mu.Lock()
-						// when a server find its current term is smaller
-						// it would turn into follower
-						if rf.currentTerm < reply.Term {
-							DPrintf("server %d append rejected by server %d due to lower term", rf.me, i)
-							rf.state = 2
-							isLeader = false
-							rf.currentTerm = reply.Term
-							rf.persist()
+					//FIXME: partition no reply
+					// network issue, return false then retry at once
+					ok := rf.sendAppendEntries(i, args, reply)
+					if ok {
+						if reply.Success {
+							//note that update to matchIndex and nextIndex is concurrent
+							// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
+							rf.mu.Lock()
+							// nextIndex might be updated already
+							rf.matchIndex[i] = max(args.PrevLogIndex+len(args.Entries), rf.matchIndex[i])
+							rf.nextIndex[i] = rf.matchIndex[i] + 1
+							rf.commitIfPossible()
 							rf.mu.Unlock()
 							return
 						} else {
-							// synchronize the log with follower i, can optimize it with term backwards
-							// decrease the nextIndex, which is initialized to len(leader_log) + 1
-							// append the prev entry at the head and resend the appendRPC
-							// nextIndex shouldn't be smaller than matchIndex
-							rf.nextIndex[i] = max(reply.FirstConflictTermEntryIndex, rf.matchIndex[i]+1)
-							DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
-							if rf.nextIndex[i] <= rf.log.LastIncludedIndex { // turn to install snapshot
+							rf.mu.Lock()
+							// when a server find its current term is smaller
+							// it would turn into follower
+							if rf.currentTerm < reply.Term {
+								DPrintf("server %d append rejected by server %d due to lower term", rf.me, i)
+								rf.state = 2
+								isLeader = false
+								rf.currentTerm = reply.Term
+								rf.persist()
 								rf.mu.Unlock()
-								rf.sendInstallSnapshot(i)
 								return
+							} else {
+								// synchronize the log with follower i, can optimize it with term backwards
+								// decrease the nextIndex, which is initialized to len(leader_log) + 1
+								// append the prev entry at the head and resend the appendRPC
+								// nextIndex shouldn't be smaller than matchIndex
+								rf.nextIndex[i] = max(reply.FirstConflictTermEntryIndex, rf.matchIndex[i]+1)
+								DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
+								if rf.nextIndex[i] <= rf.log.LastIncludedIndex { // turn to install snapshot
+									rf.mu.Unlock()
+									rf.sendInstallSnapshot(i)
+									return
+								}
+								// if rf.nextIndex[i] <= rf.matchIndex[i] {
+								// 	rf.nextIndex[i] = rf.matchIndex[i] + 1 // >= 1
+								// }
+								rf.mu.Unlock()
 							}
-							// if rf.nextIndex[i] <= rf.matchIndex[i] {
-							// 	rf.nextIndex[i] = rf.matchIndex[i] + 1 // >= 1
-							// }
-							rf.mu.Unlock()
 						}
 					}
+					time.Sleep(time.Duration(AppendEntryRetryInterval) * time.Millisecond)
 				}
 
 				//DPrintf("server %d connected with leader %d? %v", i, rf.me, ok)
@@ -117,6 +125,7 @@ func (rf *Raft) commitIfPossible() {
 //concurrent check apply update issue:
 // lastApplied updated by another goroutine
 // how to decrease the  duplicate cmd sent to apply chan
+//TODO: optimization checkApply() and batch process input cmd
 func (rf *Raft) checkApply() {
 	rf.mu.Lock()
 	target := rf.commitIndex
@@ -170,6 +179,8 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 	}
 	//DPrintf("args entries: %+v", args.Entries)
 	args.PrevLogIndex = max(rf.nextIndex[peer]-1, rf.log.LastIncludedIndex)
+	//FIXME: 3A bug: args.PrevLogIndex > log.len()
+	args.PrevLogIndex = min(args.PrevLogIndex, rf.log.Len())
 	args.PrevLogTerm = rf.log.LastIncludedTerm
 	if args.PrevLogIndex > rf.log.LastIncludedIndex {
 		args.PrevLogTerm = rf.log.GetTerm(args.PrevLogIndex)
@@ -270,7 +281,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) sendAppendEntries(server int, req *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	// check if rf is still the leader
 	// avoid the bug that buildentry with a new updated term number
-	DPrintf("server %d send to server %d args: %+v", req.LeaderId, server, req)
+	rf.mu.Lock()
+	DPrintf("server %d send to server %d args: %+v, server log len: %d", req.LeaderId, server, req, rf.log.Len())
+	rf.mu.Unlock()
 	ok := rf.peers[server].Call("Raft.AppendEntries", req, reply)
 	return ok
 }
