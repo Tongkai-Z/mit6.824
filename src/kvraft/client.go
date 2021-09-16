@@ -105,6 +105,7 @@ func (ck *Clerk) Get(key string) string {
 			DPrintf("[clerk %d] get operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
 		case re := <-retry:
+			time.Sleep(50 * time.Millisecond)
 			DPrintf("[clerk %d] get err %s by server %d", ck.clientID, re.Err, cur)
 			offset++
 			t.Reset(timeout)
@@ -172,6 +173,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			DPrintf("[clerk %d] put operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
 		case r := <-retry:
+			time.Sleep(50 * time.Millisecond)
 			offset++
 			DPrintf("[clerk %d] put err %s by server %d", ck.clientID, r.Err, cur)
 			t.Reset(timeout)

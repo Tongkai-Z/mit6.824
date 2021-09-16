@@ -4,6 +4,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"6.824/labgob"
 	"6.824/labrpc"
@@ -11,9 +12,10 @@ import (
 )
 
 const (
-	Debug       = true
-	GetOp       = "getOperation"
-	PutAppendOp = "putAppendOperation"
+	Debug         = false
+	ServerTimeOut = 1 * time.Second
+	GetOp         = "getOperation"
+	PutAppendOp   = "putAppendOperation"
 )
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
@@ -54,23 +56,34 @@ type KVServer struct {
 // but get should not read stale data, so easiest way is only reading from leader
 // we can ignore the idempotent check for get, since it has not side effect
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// check current term
-	if !kv.checkTerm() {
-		// not leader return error
+	term, isLeader := kv.rf.GetState()
+	if !isLeader {
 		reply.Err = "server not leader"
 		return
 	}
-
 	kv.mu.Lock()
-	// check if the request is still in progress
-	if sub, ok := kv.subscriberMap[args.ClientID]; ok {
-		if _, ok := sub[args.SerialNumber]; ok {
-			reply.Err = "duplicate call, still in processing"
-			kv.mu.Unlock()
-			return
+	// lower term let req pass
+	if atomic.LoadInt32(&kv.term) < int32(term) {
+		atomic.StoreInt32(&kv.term, int32(term))
+		// clear kv.sub
+		if clientMap, ok := kv.subscriberMap[args.ClientID]; ok {
+			// lower term request in progress
+			if respChan, ok := clientMap[args.SerialNumber]; ok {
+				close(respChan)
+			}
+		}
+	} else {
+		// check if the request is still in progress
+		if sub, ok := kv.subscriberMap[args.ClientID]; ok {
+			if _, ok := sub[args.SerialNumber]; ok {
+				reply.Err = "duplicate call, still in processing"
+				kv.mu.Unlock()
+				return
+			}
 		}
 	}
 	kv.mu.Unlock()
+
 	// make the op
 	op := &Op{
 		OpName:       GetOp,
@@ -86,16 +99,26 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 	// subscribe the operation and wait for applychan
 	sub := make(chan int, 1)
-	//FIXME: duplicate get overwrite former chan
 	kv.subscribe(args.ClientID, args.SerialNumber, sub)
 	DPrintf("[server %d]subscribe for get cmd %d, key: %s from [clerk %d] serial number: %d", kv.me, commandIndex, args.Key, args.ClientID, args.SerialNumber)
-	<-sub
-	DPrintf("[server %d]get cmd %d, notified from [clerk %d] serial number: %d", kv.me, commandIndex, args.ClientID, args.SerialNumber)
+	select {
+	case _, ok := <-sub:
+		if !ok { //chan closed
+			reply.Err = "same request in higher term is processed"
+			return
+		}
 
-	kv.rwLock.RLock()
-	reply.Value = kv.ma[args.Key]
-	DPrintf("[server %d]get cmd %d, send to [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, reply.Value)
-	kv.rwLock.RUnlock()
+		DPrintf("[server %d]get cmd %d, notified from [clerk %d] serial number: %d", kv.me, commandIndex, args.ClientID, args.SerialNumber)
+
+		kv.rwLock.RLock()
+		reply.Value = kv.ma[args.Key]
+		DPrintf("[server %d]get cmd %d, send to [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, reply.Value)
+		kv.rwLock.RUnlock()
+	case <-time.After(ServerTimeOut):
+		reply.Err = "raft time out"
+		return
+	}
+
 }
 
 // only leader can register the serialNumber
@@ -103,21 +126,32 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 // so for processed opts, we should still response gracefully
 //TODO: 新term的重复请求被放行的话，怎么回收之前那个被监听的chan，并返回err
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// check current term
-	if !kv.checkTerm() {
-		// not leader return error
+	term, isLeader := kv.rf.GetState()
+	if !isLeader {
 		reply.Err = "server not leader"
 		return
+
 	}
 
-	// check if this opt is in process
 	kv.mu.Lock()
-	// check if the request is still in progress
-	if sub, ok := kv.subscriberMap[args.ClientID]; ok {
-		if _, ok := sub[args.SerialNumber]; ok {
-			reply.Err = "duplicate call, still in processing"
-			kv.mu.Unlock()
-			return
+	// lower term let req pass
+	if atomic.LoadInt32(&kv.term) < int32(term) {
+		atomic.StoreInt32(&kv.term, int32(term))
+		// clear kv.sub
+		if clientMap, ok := kv.subscriberMap[args.ClientID]; ok {
+			// lower term request in progress
+			if respChan, ok := clientMap[args.SerialNumber]; ok {
+				close(respChan)
+			}
+		}
+	} else {
+		// check if the request is still in progress
+		if sub, ok := kv.subscriberMap[args.ClientID]; ok {
+			if _, ok := sub[args.SerialNumber]; ok {
+				reply.Err = "duplicate call, still in processing"
+				kv.mu.Unlock()
+				return
+			}
 		}
 	}
 	kv.mu.Unlock()
@@ -148,30 +182,23 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	sub := make(chan int, 1)
 	kv.subscribe(args.ClientID, args.SerialNumber, sub)
 	DPrintf("[server %d]subscribe for putAppend cmd %d, key: %s, val: %s, from [clerk %d] serial number: %d", kv.me, commandIndex, args.Key, args.Value, args.ClientID, args.SerialNumber)
-	<-sub
 
-	kv.rwLock.Lock()
-	if args.SerialNumber > kv.serialMap[args.ClientID] {
-		kv.serialMap[args.ClientID] = args.SerialNumber
-	}
-	kv.rwLock.Unlock()
-	DPrintf("[server %d]put cmd %d, notified from [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, args.Value)
-}
-
-// compare leader term with kv term
-func (kv *KVServer) checkTerm() bool {
-	term, isLeader := kv.rf.GetState()
-	if !isLeader {
-		return false
-	}
-	if atomic.LoadInt32(&kv.term) < int32(term) {
-		atomic.StoreInt32(&kv.term, int32(term))
-		// clear kv.sub
-		kv.mu.Lock()
-		defer kv.mu.Unlock()
-		if kv.subscriberMap[clientID] == nil {
-			kv.subscriberMap[clientID] = make(map[int64]chan int)
+	select {
+	case _, ok := <-sub:
+		if !ok { //chan closed
+			reply.Err = "same request in higher term is processed"
+			return
 		}
+
+		kv.rwLock.Lock()
+		if args.SerialNumber > kv.serialMap[args.ClientID] {
+			kv.serialMap[args.ClientID] = args.SerialNumber
+		}
+		kv.rwLock.Unlock()
+		DPrintf("[server %d]put cmd %d, notified from [clerk %d] serial number: %d, key: %s, val: %s", kv.me, commandIndex, args.ClientID, args.SerialNumber, args.Key, args.Value)
+	case <-time.After(ServerTimeOut):
+		reply.Err = "raft time out"
+		return
 	}
 }
 
@@ -294,7 +321,7 @@ func (kv *KVServer) publishCommand(clientID, serialNumber int64) {
 	defer kv.mu.Unlock()
 	if sub, ok := kv.subscriberMap[clientID]; ok {
 		if ch, ok := sub[serialNumber]; ok {
-			close(ch)
+			ch <- 1
 			delete(sub, serialNumber)
 		}
 	}

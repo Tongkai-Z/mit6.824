@@ -31,7 +31,7 @@ import (
 
 const (
 	BatcherInterval          = 10
-	AppendEntryRetryInterval = 50
+	AppendEntryRetryInterval = 20
 	HeartBeatInterval        = 120
 )
 
