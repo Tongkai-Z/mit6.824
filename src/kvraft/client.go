@@ -35,7 +35,6 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.servers = servers
 	ck.serialNumber = InitialSerialNumber
 	ck.clientID = nrand()
-	// You'll have to add code here.
 	return ck
 }
 
