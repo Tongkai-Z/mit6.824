@@ -1,9 +1,15 @@
 package kvraft
 
+import "time"
+
 const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongLeader = "ErrWrongLeader"
+	Debug          = false
+	ServerTimeOut  = 1 * time.Second
+	GetOp          = "getOperation"
+	PutAppendOp    = "putAppendOperation"
 )
 
 type Err string

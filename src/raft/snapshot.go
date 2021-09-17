@@ -103,6 +103,10 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	go rf.sendSnapShotToApplyChan(args.Data, args.LastIncludedTerm, args.LastIncludedIndex)
 }
 
+func (rf *Raft) GetLogSize() int {
+	return rf.persister.RaftStateSize()
+}
+
 func (rf *Raft) sendSnapShotToApplyChan(snapshot []byte, term, index int) {
 	var applyMsg ApplyMsg
 	applyMsg.SnapshotValid = true

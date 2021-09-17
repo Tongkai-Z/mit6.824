@@ -2,7 +2,15 @@
 
 This repo is for implementation of all labs in mit6.824
 
-## Log
+## Lab3 Log
+
+Design:
+
+Write/Read from leader, and Get() is also add to raft log in case of read minority stale data when network partition happend.
+
+- Serializability: Since read write from the leader, serializability is guaranteed
+- Availability: Fault tolerance is implemented by raft election mechanism
+- Consistancy: final consistancy
 
 ### Sep 6
 
@@ -112,6 +120,48 @@ Test: unreliable net, restarts, partitions, random keys, many clients (3A) ...
 PASS
 
 ok      6.824/kvraft    331.020s
+
+### Sep 17
+
+Refactory code and finish lab3B
+
+Test: InstallSnapshot RPC (3B) ...
+
+  ... Passed --   3.1  3  2213   63
+
+Test: snapshot size is reasonable (3B) ...
+
+  ... Passed --   8.1  3  2488  800
+
+Test: ops complete fast enough (3B) ...
+
+Test: restarts, snapshots, one client (3B) ...
+
+  ... Passed --  21.7  5  7671 1440
+
+Test: restarts, snapshots, many clients (3B) ...
+
+  ... Passed --  22.1  5 13604 6571
+
+Test: unreliable net, snapshots, many clients (3B) ...
+
+  ... Passed --  28.4  5  2844  234
+
+Test: unreliable net, restarts, snapshots, many clients (3B) ...
+
+  ... Passed --  35.1  5  2533  156
+
+Test: unreliable net, restarts, partitions, snapshots, many clients (3B) ...
+
+  ... Passed --  42.9  5  7540  177
+
+Test: unreliable net, restarts, partitions, snapshots, random keys, many clients (3B) ...
+
+  ... Passed --  51.7  7 15370  447
+
+PASS
+
+ok      6.824/kvraft    224.004s
 
 ## Todo
 
