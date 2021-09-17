@@ -124,7 +124,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 // only leader can register the serialNumber
 // duplicate put should return normally since the response could be lost due to internet
 // so for processed opts, we should still response gracefully
-//TODO: 新term的重复请求被放行的话，怎么回收之前那个被监听的chan，并返回err
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	term, isLeader := kv.rf.GetState()
 	if !isLeader {
