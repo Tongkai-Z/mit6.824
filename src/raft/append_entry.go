@@ -1,6 +1,9 @@
 package raft
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type AppendEntriesArgs struct {
 	Term         int32
@@ -33,47 +36,52 @@ func (rf *Raft) processLogReplication() {
 					if !isLeader {
 						return
 					}
-					rf.sendAppendEntries(i, args, reply)
-					if reply.Success {
-						// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
-						rf.mu.Lock()
-						// nextIndex might be updated already
-						rf.matchIndex[i] = args.PrevLogIndex + len(args.Entries)
-						rf.nextIndex[i] = rf.matchIndex[i] + 1
-						rf.commitIfPossible()
-						rf.mu.Unlock()
-						return
-					} else {
-						rf.mu.Lock()
-						// when a server find its current term is smaller
-						// it would turn into follower
-						if rf.currentTerm < reply.Term {
-							DPrintf("server %d append rejected by server %d due to lower term", rf.me, i)
-							rf.state = 2
-							isLeader = false
-							rf.currentTerm = reply.Term
-							rf.persist()
+					//FIXME: partition no reply
+					// network issue, return false then retry at once
+					ok := rf.sendAppendEntries(i, args, reply)
+					if ok {
+						if reply.Success {
+							//note that update to matchIndex and nextIndex is concurrent
+							// DPrintf("server %d accepted server %d's append", i, args.LeaderId)
+							rf.mu.Lock()
+							// nextIndex might be updated already
+							rf.matchIndex[i] = max(args.PrevLogIndex+len(args.Entries), rf.matchIndex[i])
+							rf.nextIndex[i] = rf.matchIndex[i] + 1
+							rf.commitIfPossible()
 							rf.mu.Unlock()
 							return
 						} else {
-							// synchronize the log with follower i, can optimize it with term backwards
-							// decrease the nextIndex, which is initialized to len(leader_log) + 1
-							// append the prev entry at the head and resend the appendRPC
-							// nextIndex shouldn't be smaller than matchIndex
-							rf.nextIndex[i] = reply.FirstConflictTermEntryIndex
-							rf.nextIndex[i] = max(rf.nextIndex[i], rf.matchIndex[i]+1)
-							DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
-							if rf.nextIndex[i] <= rf.log.LastIncludedIndex { // turn to install snapshot
+							rf.mu.Lock()
+							// when a server find its current term is smaller
+							// it would turn into follower
+							if rf.currentTerm < reply.Term {
+								DPrintf("server %d append rejected by server %d due to lower term", rf.me, i)
+								rf.state = 2
+								isLeader = false
+								rf.currentTerm = reply.Term
+								rf.persist()
 								rf.mu.Unlock()
-								rf.sendInstallSnapshot(i)
 								return
+							} else {
+								// synchronize the log with follower i, can optimize it with term backwards
+								// decrease the nextIndex, which is initialized to len(leader_log) + 1
+								// append the prev entry at the head and resend the appendRPC
+								// nextIndex shouldn't be smaller than matchIndex
+								rf.nextIndex[i] = max(reply.FirstConflictTermEntryIndex, rf.matchIndex[i]+1)
+								DPrintf("leader %d, follower %d nextIndex %d", rf.me, i, rf.nextIndex[i])
+								if rf.nextIndex[i] <= rf.log.LastIncludedIndex { // turn to install snapshot
+									rf.mu.Unlock()
+									rf.sendInstallSnapshot(i)
+									return
+								}
+								// if rf.nextIndex[i] <= rf.matchIndex[i] {
+								// 	rf.nextIndex[i] = rf.matchIndex[i] + 1 // >= 1
+								// }
+								rf.mu.Unlock()
 							}
-							// if rf.nextIndex[i] <= rf.matchIndex[i] {
-							// 	rf.nextIndex[i] = rf.matchIndex[i] + 1 // >= 1
-							// }
-							rf.mu.Unlock()
 						}
 					}
+					time.Sleep(time.Duration(AppendEntryRetryInterval) * time.Millisecond)
 				}
 
 				//DPrintf("server %d connected with leader %d? %v", i, rf.me, ok)
@@ -86,7 +94,8 @@ func (rf *Raft) commitIfPossible() {
 	if rf.state == 1 && !rf.killed() {
 		// rf.commitIndex = int32(len(rf.log))
 		// send the command from old commitIndex to current
-		// FIXMEwhat if the new entries came in-between, is it safe to commit the last entry?
+		// what if the new entries came in-between, is it safe to commit the last entry?
+		// check each entry in (old, lastEntry], if matched by majority then commit
 		majority := len(rf.peers) / 2
 		old := rf.commitIndex
 		start := int(rf.commitIndex + 1)
@@ -105,7 +114,7 @@ func (rf *Raft) commitIfPossible() {
 
 		}
 		if rf.commitIndex > old {
-			go rf.checkApply(rf.commitIndex)
+			go rf.checkApply()
 		}
 
 		DPrintf("current log of leader %d: %+v, commit index: %d", rf.me, rf.log, rf.commitIndex)
@@ -113,24 +122,38 @@ func (rf *Raft) commitIfPossible() {
 	}
 }
 
-func (rf *Raft) checkApply(target int32) {
+//concurrent check apply update issue:
+// lastApplied updated by another goroutine
+// how to decrease the  duplicate cmd sent to apply chan
+//TODO: optimization checkApply() and batch process input cmd
+func (rf *Raft) checkApply() {
 	rf.mu.Lock()
-	target = minInt(target, int32(rf.log.Len()))
+	target := rf.commitIndex
 	lastApplied := rf.lastApplied
 	rf.mu.Unlock()
+
 	for i := lastApplied + 1; i <= target; i++ {
 		rf.mu.Lock()
+		if rf.lastApplied >= i { // update by another thread
+			rf.mu.Unlock()
+			continue
+		}
+		DPrintf("Server %d Applying command index %d, last applied: %d, lastIncludedIndex: %d", rf.me, i, rf.lastApplied, rf.log.LastIncludedIndex)
 		var applyMsg ApplyMsg
 		applyMsg.Command = rf.log.Get(int(i)).Command
 		applyMsg.CommandIndex = int(i)
 		applyMsg.CommandValid = true
 		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
+
+		rf.mu.Lock()
+		if rf.lastApplied < i {
+			rf.lastApplied = i
+		}
+		DPrintf("entry %d applied for server %d", rf.lastApplied, rf.me)
+		rf.mu.Unlock()
 	}
-	rf.mu.Lock()
-	rf.lastApplied = target
-	DPrintf("entry %d applied for node %d", rf.lastApplied, rf.me)
-	rf.mu.Unlock()
+
 }
 
 func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
@@ -156,6 +179,8 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 	}
 	//DPrintf("args entries: %+v", args.Entries)
 	args.PrevLogIndex = max(rf.nextIndex[peer]-1, rf.log.LastIncludedIndex)
+	//FIXME: 3A bug: args.PrevLogIndex > log.len()
+	args.PrevLogIndex = min(args.PrevLogIndex, rf.log.Len())
 	args.PrevLogTerm = rf.log.LastIncludedTerm
 	if args.PrevLogIndex > rf.log.LastIncludedIndex {
 		args.PrevLogTerm = rf.log.GetTerm(args.PrevLogIndex)
@@ -169,6 +194,8 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 // note that this message also establish the leadership, so it will clear the voteFor
 // if the current server is a candidate, it will compare the term
 // if currentTerm <= receivedTerm it would turn to follower at once
+// rpc request with overlapping entries might come concurrently,
+// thus we only append the conflict part between the follower and leader each time
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	// update term first
 	rf.mu.Lock()
@@ -221,9 +248,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			DPrintf("server %d received heartbeat", rf.me)
 		}
 
+		//FIXME: log consistent with leader?
 		if args.LeaderCommit > rf.commitIndex {
 			rf.commitIndex = args.LeaderCommit
-			go rf.checkApply(args.LeaderCommit)
+			go rf.checkApply()
 		}
 		reply.Success = true
 
@@ -253,7 +281,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) sendAppendEntries(server int, req *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	// check if rf is still the leader
 	// avoid the bug that buildentry with a new updated term number
-	DPrintf("server %d send to server %d args: %+v", req.LeaderId, server, req)
+	rf.mu.Lock()
+	DPrintf("server %d send to server %d args: %+v, server log len: %d", req.LeaderId, server, req, rf.log.Len())
+	rf.mu.Unlock()
 	ok := rf.peers[server].Call("Raft.AppendEntries", req, reply)
 	return ok
 }

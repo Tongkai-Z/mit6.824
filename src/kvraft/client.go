@@ -66,7 +66,7 @@ func (ck *Clerk) Get(key string) string {
 
 	//done chan
 	done := make(chan *GetReply, len(ck.servers))
-	switchServer := make(chan *GetReply, len(ck.servers))
+	retry := make(chan *GetReply, len(ck.servers))
 	var r *GetReply
 
 	offset := 0
@@ -80,17 +80,19 @@ func (ck *Clerk) Get(key string) string {
 		go func() {
 			cur := cur
 			reply := new(GetReply)
-			DPrintf("[clerk %d] called get opt to server %d, key %s", ck.clientID, cur, key)
+			DPrintf("[clerk %d] called get opt to server %d, key: %s", ck.clientID, cur, key)
 			// sync
 			success := s.Call("KVServer.Get", args, reply)
 			if success {
-				if reply.Err != "server not leader" {
+				if reply.Err == "" {
 					//update prefer
-					prefer = cur
+					ck.mu.Lock()
+					ck.prefer = cur
+					ck.mu.Unlock()
 					DPrintf("[clerk %d] get operation serial number %d by server %d finished, key: %s, val: %s", ck.clientID, args.SerialNumber, cur, args.Key, reply.Value)
 					done <- reply // success
 				} else {
-					switchServer <- reply
+					retry <- reply
 				}
 			}
 		}()
@@ -102,17 +104,15 @@ func (ck *Clerk) Get(key string) string {
 			offset++
 			DPrintf("[clerk %d] get operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
-		case <-switchServer:
-			DPrintf("[clerk %d] get not leader err by server %d", ck.clientID, cur)
+		case re := <-retry:
+			time.Sleep(50 * time.Millisecond)
+			DPrintf("[clerk %d] get err %s by server %d", ck.clientID, re.Err, cur)
 			offset++
 			t.Reset(timeout)
 		}
 	}
 
 Done:
-	ck.mu.Lock()
-	ck.prefer = prefer
-	ck.mu.Unlock()
 	return r.Value
 }
 
@@ -136,7 +136,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	//done chan
 	done := make(chan *PutAppendReply, len(ck.servers))
-	switchServer := make(chan *PutAppendReply, len(ck.servers))
+	retry := make(chan *PutAppendReply, len(ck.servers))
 
 	ck.mu.Lock()
 	prefer := ck.prefer
@@ -146,40 +146,39 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	for {
 		cur := (prefer + offset) % len(ck.servers)
 		s := ck.servers[cur]
-		DPrintf("[clerk %d] called put operation to server %d, key %s, val %s", ck.clientID, cur, key, value)
+		DPrintf("[clerk %d] called put operation to server %d, key: %s, val: %s", ck.clientID, cur, key, value)
 		go func() {
 			// sync
 			reply := new(PutAppendReply)
 			cur := cur
 			success := s.Call("KVServer.PutAppend", args, reply)
 			if success {
-				if reply.Err != "server not leader" {
-					prefer = cur
+				if reply.Err == "" {
+					ck.mu.Lock()
+					ck.prefer = cur
+					ck.mu.Unlock()
 					DPrintf("[clerk %d] put operation serial number %d by server %d finished", ck.clientID, args.SerialNumber, cur)
 					done <- reply // success
 				} else {
-					switchServer <- reply
+					retry <- reply
 				}
 			}
 		}()
 		select {
 		case <-done:
-			goto Done
+			return
 		case <-t.C:
 			// timeout
 			offset++
 			DPrintf("[clerk %d] put operation serial number %d by server %d time out", ck.clientID, args.SerialNumber, cur)
 			t.Reset(timeout)
-		case <-switchServer:
+		case r := <-retry:
+			time.Sleep(50 * time.Millisecond)
 			offset++
-			DPrintf("[clerk %d] put not leader err by server %d", ck.clientID, cur)
+			DPrintf("[clerk %d] put err %s by server %d", ck.clientID, r.Err, cur)
 			t.Reset(timeout)
 		}
 	}
-Done:
-	ck.mu.Lock()
-	ck.prefer = prefer
-	ck.mu.Unlock()
 }
 
 func (ck *Clerk) Put(key string, value string) {

@@ -29,6 +29,12 @@ import (
 	"6.824/labrpc"
 )
 
+const (
+	BatcherInterval          = 10
+	AppendEntryRetryInterval = 20
+	HeartBeatInterval        = 120
+)
+
 //
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
@@ -141,11 +147,22 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = rf.log.Len()
 	DPrintf("sever: %d new cmd arrives at index: %d, term: %d, log: %+v", rf.me, index, term, rf.log)
 	rf.mu.Unlock()
-	// TODO: use batch process to reduce the number of rpcs and go routines
+	// use batch process to reduce the number of rpcs and go routines
 	// 2C: too many existing goroutine
 	// use heartbeat interval to process log replication in batches
-	go rf.processLogReplication()
+	//go rf.processLogReplication()
+	atomic.CompareAndSwapInt32(&rf.batchFlag, 0, 1)
 	return index, term, isLeader
+}
+
+// batcher checks if there is batched cmd, and process them
+func (rf *Raft) batcher() {
+	for !rf.killed() {
+		time.Sleep(time.Duration(BatcherInterval) * time.Millisecond)
+		if atomic.CompareAndSwapInt32(&rf.batchFlag, 1, 0) {
+			go rf.processLogReplication()
+		}
+	}
 }
 
 //
@@ -193,7 +210,7 @@ func (rf *Raft) ticker() {
 		} else {
 			// wins the election turn into leader loop
 			// send out AppendEntries RPC as heartbeat
-			time.Sleep(time.Duration(120) * time.Millisecond)
+			time.Sleep(time.Duration(HeartBeatInterval) * time.Millisecond)
 			rf.processLogReplication()
 		}
 
@@ -243,6 +260,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
+	go rf.batcher()
 
 	return rf
 }

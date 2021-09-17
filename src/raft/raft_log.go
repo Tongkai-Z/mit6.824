@@ -16,6 +16,7 @@ func (l *RaftLog) Append(e ...*Entry) {
 }
 
 func (l *RaftLog) Get(idx int) *Entry {
+	//DPrintf("Get opt:idx %d, lastIndex: %d", idx, l.LastIncludedIndex)
 	return l.Log[idx-l.LastIncludedIndex-1]
 }
 
