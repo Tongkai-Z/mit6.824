@@ -2,7 +2,15 @@
 
 This repo is for implementation of all labs in mit6.824
 
-## Log
+## Lab3 Log
+
+Design:
+
+Write/Read from leader, and Get() is also add to raft log in case of read minority stale data when network partition happend.
+
+- Serializability: Since read write from the leader, serializability is guaranteed
+- Availability: Fault tolerance is implemented by raft election mechanism
+- Consistancy: final consistancy
 
 ### Sep 6
 
