@@ -4,14 +4,19 @@ package shardctrler
 // Shardctrler clerk.
 //
 
-import "6.824/labrpc"
-import "time"
-import "crypto/rand"
-import "math/big"
+import (
+	"crypto/rand"
+	"math/big"
+	"sync/atomic"
+	"time"
+
+	"6.824/labrpc"
+)
 
 type Clerk struct {
-	servers []*labrpc.ClientEnd
-	// Your data here.
+	servers   []*labrpc.ClientEnd
+	id        int64
+	serialNum int64
 }
 
 func nrand() int64 {
@@ -24,7 +29,8 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
-	// Your code here.
+	ck.id = nrand()
+	ck.serialNum = 0
 	return ck
 }
 
@@ -46,10 +52,12 @@ func (ck *Clerk) Query(num int) Config {
 }
 
 func (ck *Clerk) Join(servers map[int][]string) {
-	args := &JoinArgs{}
-	// Your code here.
-	args.Servers = servers
-
+	args := &JoinArgs{
+		Servers:   servers,
+		SerialNum: atomic.LoadInt64(&ck.serialNum),
+		ClientID:  ck.id,
+	}
+	atomic.AddInt64(&ck.serialNum, 1)
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {

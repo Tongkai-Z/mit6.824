@@ -1,11 +1,13 @@
 package shardctrler
 
+import (
+	"fmt"
+	"sync"
 
-import "6.824/raft"
-import "6.824/labrpc"
-import "sync"
-import "6.824/labgob"
-
+	"6.824/labgob"
+	"6.824/labrpc"
+	"6.824/raft"
+)
 
 type ShardCtrler struct {
 	mu      sync.Mutex
@@ -13,19 +15,62 @@ type ShardCtrler struct {
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 
-	// Your data here.
-
-	configs []Config // indexed by config num
+	clientSerialNum map[int64]int64
+	configs         []Config // indexed by config num
 }
-
 
 type Op struct {
 	// Your data here.
 }
 
-
 func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
-	// Your code here.
+	if _, leader := sc.rf.GetState(); !leader {
+		reply.WrongLeader = true
+		return
+	}
+	reply.WrongLeader = false
+	// detect duplicate call
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
+		// duplicate req, reply normally
+		return
+	} else {
+		// update the serialNum
+		sc.clientSerialNum[args.ClientID] = args.SerialNum
+	}
+
+	// update the configuration
+	err, newConfig := sc.cloneConfig(args.Servers)
+	if len(err) > 0 {
+		reply.Err = err
+		return
+	}
+	sc.reBalanceShards(newConfig)
+	sc.configs = append(sc.configs, *newConfig)
+}
+
+func (sc *ShardCtrler) cloneConfig(servers map[int][]string) (Err, *Config) {
+	newConfig := new(Config)
+	newConfig.Num = len(sc.configs)
+	prev := len(sc.configs) - 1
+	newConfig.Groups = make(map[int][]string)
+	for key, val := range sc.configs[prev].Groups {
+		newConfig.Groups[key] = val
+	}
+	for key, val := range servers {
+		if _, ok := newConfig.Groups[key]; ok {
+			return Err(fmt.Sprintf("GID already in use: %d", key)), nil
+		}
+		newConfig.Groups[key] = val
+	}
+	return "", newConfig
+}
+
+// split shards as even as possible and move as few shards as possible
+func (sc *ShardCtrler) reBalanceShards(config *Config) {
+
 }
 
 func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
@@ -39,7 +84,6 @@ func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
 func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 	// Your code here.
 }
-
 
 //
 // the tester calls Kill() when a ShardCtrler instance won't
@@ -68,6 +112,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 	sc.me = me
 
 	sc.configs = make([]Config, 1)
+	// config num is started from zero
 	sc.configs[0].Groups = map[int][]string{}
 
 	labgob.Register(Op{})
