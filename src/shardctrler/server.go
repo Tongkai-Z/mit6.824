@@ -2,6 +2,7 @@ package shardctrler
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"6.824/labgob"
@@ -23,12 +24,34 @@ type Op struct {
 	// Your data here.
 }
 
+type group struct {
+	groupID int
+	shards  []int
+}
+
+type groupSlice []*group
+
+func (g groupSlice) Len() int {
+	return len(g)
+}
+
+// desc
+func (g groupSlice) Less(i, j int) bool {
+	return len(g[i].shards) > len(g[j].shards)
+}
+
+func (g groupSlice) Swap(i, j int) {
+	g[i], g[j] = g[j], g[i]
+}
+
 func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
+	// check leader
 	if _, leader := sc.rf.GetState(); !leader {
 		reply.WrongLeader = true
 		return
 	}
 	reply.WrongLeader = false
+
 	// detect duplicate call
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -42,47 +65,151 @@ func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
 	}
 
 	// update the configuration
-	err, newConfig := sc.cloneConfig(args.Servers)
-	if len(err) > 0 {
-		reply.Err = err
-		return
+	newConfig := sc.cloneConfig()
+	for key, val := range args.Servers {
+		if _, ok := newConfig.Groups[key]; ok {
+			reply.Err = Err(fmt.Sprintf("GID already in use: %d", key))
+			return
+		}
+		newConfig.Groups[key] = val
 	}
 	sc.reBalanceShards(newConfig)
 	sc.configs = append(sc.configs, *newConfig)
 }
 
-func (sc *ShardCtrler) cloneConfig(servers map[int][]string) (Err, *Config) {
+func (sc *ShardCtrler) cloneConfig() *Config {
 	newConfig := new(Config)
 	newConfig.Num = len(sc.configs)
-	prev := len(sc.configs) - 1
+	prevConfig := sc.configs[len(sc.configs)-1]
 	newConfig.Groups = make(map[int][]string)
-	for key, val := range sc.configs[prev].Groups {
+	for key, val := range prevConfig.Groups {
 		newConfig.Groups[key] = val
 	}
-	for key, val := range servers {
-		if _, ok := newConfig.Groups[key]; ok {
-			return Err(fmt.Sprintf("GID already in use: %d", key)), nil
-		}
-		newConfig.Groups[key] = val
+	// clone shards
+	for shardID, gID := range prevConfig.Shards {
+		newConfig.Shards[shardID] = gID
 	}
-	return "", newConfig
+	return newConfig
 }
 
 // split shards as even as possible and move as few shards as possible
 func (sc *ShardCtrler) reBalanceShards(config *Config) {
+	average := len(config.Shards) / len(config.Groups)
+	// sort the group based on number of shards they served
+	var gSlice groupSlice
+	groupMap := make(map[int]*group)
+	for shardID, groupID := range config.Shards {
+		if g, ok := groupMap[groupID]; ok {
+			g.shards = append(g.shards, shardID)
+		} else {
+			newG := new(group)
+			newG.shards = append(newG.shards, shardID)
+			groupMap[groupID] = newG
+			gSlice = append(gSlice, newG)
+		}
+	}
+	sort.Sort(gSlice)
 
+	// rebalance
+	left := 0
+	right := len(gSlice) - 1
+
+	for left < right {
+		// move shards from left to right
+		leftG := gSlice[left]
+		rightG := gSlice[right]
+		deltaL := len(leftG.shards) - average
+		deltaR := average - len(rightG.shards)
+		moved := min(deltaL, deltaR)
+		if moved != 0 {
+			rightG.shards = append(rightG.shards, leftG.shards[:moved]...)
+			leftG.shards = leftG.shards[moved:]
+		}
+		if deltaL == 0 {
+			left++
+		}
+		if deltaR == 0 {
+			right--
+		}
+	}
+
+	for _, group := range gSlice {
+		for _, s := range group.shards {
+			config.Shards[s] = group.groupID
+		}
+	}
+}
+
+func max(i, j int) int {
+	if i > j {
+		return i
+	}
+	return j
+}
+
+func min(i, j int) int {
+	if i > j {
+		return j
+	}
+	return i
 }
 
 func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
-	// Your code here.
+	// check leader
+	if _, leader := sc.rf.GetState(); !leader {
+		reply.WrongLeader = true
+		return
+	}
+	reply.WrongLeader = false
+
+	// detect duplicate call
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
+		// duplicate req, reply normally
+		return
+	} else {
+		// update the serialNum
+		sc.clientSerialNum[args.ClientID] = args.SerialNum
+	}
+
+	newConfig := sc.cloneConfig()
+	for _, gID := range args.GIDs {
+		delete(newConfig.Groups, gID)
+	}
+	sc.reBalanceShards(newConfig)
+	sc.configs = append(sc.configs, *newConfig)
 }
 
 func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
-	// Your code here.
+	// move shard to group
+	// check leader
+	if _, leader := sc.rf.GetState(); !leader {
+		reply.WrongLeader = true
+		return
+	}
+	reply.WrongLeader = false
+
+	// detect duplicate call
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
+		// duplicate req, reply normally
+		return
+	} else {
+		// update the serialNum
+		sc.clientSerialNum[args.ClientID] = args.SerialNum
+	}
+
+	newConfig := sc.cloneConfig()
+	newConfig.Shards[args.Shard] = args.GID
+	sc.configs = append(sc.configs, *newConfig)
 }
 
 func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
-	// Your code here.
+
 }
 
 //

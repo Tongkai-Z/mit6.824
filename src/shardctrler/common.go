@@ -46,7 +46,9 @@ type JoinReply struct {
 }
 
 type LeaveArgs struct {
-	GIDs []int
+	GIDs      []int
+	SerialNum int64
+	ClientID  int64
 }
 
 type LeaveReply struct {
@@ -55,8 +57,10 @@ type LeaveReply struct {
 }
 
 type MoveArgs struct {
-	Shard int
-	GID   int
+	Shard     int
+	GID       int
+	SerialNum int64
+	ClientID  int64
 }
 
 type MoveReply struct {
@@ -65,7 +69,9 @@ type MoveReply struct {
 }
 
 type QueryArgs struct {
-	Num int // desired config number
+	Num       int // desired config number
+	SerialNum int64
+	ClientID  int64
 }
 
 type QueryReply struct {
