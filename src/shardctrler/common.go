@@ -1,5 +1,7 @@
 package shardctrler
 
+import "log"
+
 //
 // Shard controler: assigns shards to replication groups.
 //
@@ -29,7 +31,8 @@ type Config struct {
 }
 
 const (
-	OK = "OK"
+	OK    = "OK"
+	Debug = true
 )
 
 type Err string
@@ -78,4 +81,25 @@ type QueryReply struct {
 	WrongLeader bool
 	Err         Err
 	Config      Config
+}
+
+func max(i, j int) int {
+	if i > j {
+		return i
+	}
+	return j
+}
+
+func min(i, j int) int {
+	if i > j {
+		return j
+	}
+	return i
+}
+
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+	if Debug {
+		log.Printf(format, a...)
+	}
+	return
 }
