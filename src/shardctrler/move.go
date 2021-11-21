@@ -1,26 +1,14 @@
 package shardctrler
 
 func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
-	// move shard to group
-	// check leader
-	if _, leader := sc.rf.GetState(); !leader {
-		reply.WrongLeader = true
-		return
-	}
-	reply.WrongLeader = false
+	gReply := sc.Serve(args)
+	reply.Err = gReply.GetError()
+	reply.WrongLeader = gReply.GetWrongLeader()
+}
 
-	// detect duplicate call
+func (sc *ShardCtrler) move(args *MoveArgs) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-
-	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
-		// duplicate req, reply normally
-		return
-	} else {
-		// update the serialNum
-		sc.clientSerialNum[args.ClientID] = args.SerialNum
-	}
-
 	newConfig := sc.cloneConfig()
 	newConfig.Shards[args.Shard] = args.GID
 	sc.configs = append(sc.configs, *newConfig)

@@ -1,6 +1,7 @@
 package shardctrler
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -23,7 +24,7 @@ type ShardCtrler struct {
 }
 
 type Op struct {
-	Conf      Config
+	Args      interface{}
 	ClientID  int64
 	SerialNum int64
 }
@@ -31,6 +32,10 @@ type Op struct {
 type group struct {
 	groupID int
 	shards  []int
+}
+
+func (g *group) String() string {
+	return fmt.Sprintf("%d: %+v", g.groupID, g.shards)
 }
 
 type groupSlice []*group
@@ -127,7 +132,7 @@ func (sc *ShardCtrler) reBalanceShards(config *Config) {
 			gSlice = append(gSlice, newG)
 		}
 		sort.Sort(gSlice)
-
+		DPrintf("sorted gSlice: %+v", gSlice)
 		// rebalance
 		left := 0
 		right := len(gSlice) - 1
@@ -139,14 +144,14 @@ func (sc *ShardCtrler) reBalanceShards(config *Config) {
 			deltaL := len(leftG.shards) - average
 			deltaR := average - len(rightG.shards)
 			moved := min(deltaL, deltaR)
-			if moved != 0 {
+			if moved > 0 {
 				rightG.shards = append(rightG.shards, leftG.shards[:moved]...)
 				leftG.shards = leftG.shards[moved:]
 			}
-			if deltaL == 0 {
+			if deltaL <= 0 {
 				left++
 			}
-			if deltaR == 0 {
+			if deltaR <= 0 {
 				right--
 			}
 		}
@@ -185,6 +190,11 @@ func (sc *ShardCtrler) Raft() *raft.Raft {
 // me is the index of the current server in servers[].
 //
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardCtrler {
+	labgob.Register(&Op{})
+	labgob.Register(&JoinArgs{})
+	labgob.Register(&LeaveArgs{})
+	labgob.Register(&MoveArgs{})
+	labgob.Register(&QueryArgs{})
 	sc := new(ShardCtrler)
 	sc.me = me
 
@@ -193,12 +203,10 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 	sc.configs[0].Groups = map[int][]string{}
 	sc.subscriberMap = make(map[int64]map[int64]chan int)
 	sc.clientSerialNum = make(map[int64]int64)
-
-	labgob.Register(Op{})
 	sc.applyCh = make(chan raft.ApplyMsg)
 	sc.rf = raft.Make(servers, me, persister, sc.applyCh)
 
-	// Your code here.
+	go sc.applyObserver()
 
 	return sc
 }
