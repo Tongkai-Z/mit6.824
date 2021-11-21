@@ -15,13 +15,16 @@ type ShardCtrler struct {
 	me      int
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
+	term    int32
 
 	clientSerialNum map[int64]int64
-	configs         []Config // indexed by config num
+	// subscriber map for leader node
+	subscriberMap map[int64]map[int64]chan int
+	configs       []Config // indexed by config num
 }
 
 type Op struct {
-	Conf      Config
+	Args      interface{}
 	ClientID  int64
 	SerialNum int64
 }
@@ -29,6 +32,10 @@ type Op struct {
 type group struct {
 	groupID int
 	shards  []int
+}
+
+func (g *group) String() string {
+	return fmt.Sprintf("%d: %+v", g.groupID, g.shards)
 }
 
 type groupSlice []*group
@@ -46,40 +53,6 @@ func (g groupSlice) Swap(i, j int) {
 	g[i], g[j] = g[j], g[i]
 }
 
-func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
-	// check leader
-	if _, leader := sc.rf.GetState(); !leader {
-		reply.WrongLeader = true
-		return
-	}
-	reply.WrongLeader = false
-
-	// detect duplicate call
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
-		// duplicate req, reply normally
-		return
-	} else {
-		// update the serialNum
-		sc.clientSerialNum[args.ClientID] = args.SerialNum
-	}
-
-	// update the configuration
-	newConfig := sc.cloneConfig()
-	for key, val := range args.Servers {
-		if _, ok := newConfig.Groups[key]; ok {
-			reply.Err = Err(fmt.Sprintf("GID already in use: %d", key))
-			return
-		}
-		newConfig.Groups[key] = val
-	}
-	sc.reBalanceShards(newConfig)
-	sc.configs = append(sc.configs, *newConfig)
-	DPrintf("join opt finished, config: %+v", newConfig)
-}
-
 func (sc *ShardCtrler) cloneConfig() *Config {
 	newConfig := new(Config)
 	newConfig.Num = len(sc.configs)
@@ -94,6 +67,31 @@ func (sc *ShardCtrler) cloneConfig() *Config {
 		newConfig.Shards[shardID] = gID
 	}
 	return newConfig
+}
+
+func (sc *ShardCtrler) checkProcessStatus(clientID, serialNumber int64, term int) Err {
+	sc.mu.Lock()
+	// lower term let req pass
+	if sc.term < int32(term) {
+		sc.term = int32(term)
+		// clear sc.sub
+		if clientMap, ok := sc.subscriberMap[clientID]; ok {
+			// lower term request in progress
+			if respChan, ok := clientMap[serialNumber]; ok {
+				close(respChan)
+			}
+		}
+	} else {
+		// check if the request is still in progress
+		if sub, ok := sc.subscriberMap[clientID]; ok {
+			if _, ok := sub[serialNumber]; ok {
+				sc.mu.Unlock()
+				return "duplicate call, still in processing"
+			}
+		}
+	}
+	sc.mu.Unlock()
+	return ""
 }
 
 // split shards as even as possible and move as few shards as possible
@@ -134,7 +132,7 @@ func (sc *ShardCtrler) reBalanceShards(config *Config) {
 			gSlice = append(gSlice, newG)
 		}
 		sort.Sort(gSlice)
-
+		DPrintf("sorted gSlice: %+v", gSlice)
 		// rebalance
 		left := 0
 		right := len(gSlice) - 1
@@ -146,14 +144,14 @@ func (sc *ShardCtrler) reBalanceShards(config *Config) {
 			deltaL := len(leftG.shards) - average
 			deltaR := average - len(rightG.shards)
 			moved := min(deltaL, deltaR)
-			if moved != 0 {
+			if moved > 0 {
 				rightG.shards = append(rightG.shards, leftG.shards[:moved]...)
 				leftG.shards = leftG.shards[moved:]
 			}
-			if deltaL == 0 {
+			if deltaL <= 0 {
 				left++
 			}
-			if deltaR == 0 {
+			if deltaR <= 0 {
 				right--
 			}
 		}
@@ -167,93 +165,6 @@ func (sc *ShardCtrler) reBalanceShards(config *Config) {
 	}
 	DPrintf("config %d rebalance finished, shards: %v", config.Num, config.Shards)
 
-}
-
-func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
-	// check leader
-	if _, leader := sc.rf.GetState(); !leader {
-		reply.WrongLeader = true
-		return
-	}
-	reply.WrongLeader = false
-
-	// detect duplicate call
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
-		// duplicate req, reply normally
-		return
-	} else {
-		// update the serialNum
-		sc.clientSerialNum[args.ClientID] = args.SerialNum
-	}
-
-	newConfig := sc.cloneConfig()
-	for _, gID := range args.GIDs {
-		delete(newConfig.Groups, gID)
-		// unassign the shard
-		for idx, id := range newConfig.Shards {
-			if gID == id {
-				newConfig.Shards[idx] = 0
-			}
-		}
-	}
-	sc.reBalanceShards(newConfig)
-	sc.configs = append(sc.configs, *newConfig)
-	DPrintf("leave opt finished, config: %+v", newConfig)
-}
-
-func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
-	// move shard to group
-	// check leader
-	if _, leader := sc.rf.GetState(); !leader {
-		reply.WrongLeader = true
-		return
-	}
-	reply.WrongLeader = false
-
-	// detect duplicate call
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	if sc.clientSerialNum[args.ClientID] >= args.SerialNum {
-		// duplicate req, reply normally
-		return
-	} else {
-		// update the serialNum
-		sc.clientSerialNum[args.ClientID] = args.SerialNum
-	}
-
-	newConfig := sc.cloneConfig()
-	newConfig.Shards[args.Shard] = args.GID
-	sc.configs = append(sc.configs, *newConfig)
-	DPrintf("move opt finished, config: %+v", newConfig)
-}
-
-func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
-	defer func() {
-		DPrintf("[server %d]Query req: %+v", sc.me, args)
-		DPrintf("[server %d]Query reply: %+v", sc.me, reply)
-	}()
-	// check leader
-	if _, leader := sc.rf.GetState(); !leader {
-		reply.WrongLeader = true
-		return
-	}
-	reply.WrongLeader = false
-
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	// get the config
-	// -1 or bigger than the largest config num, return latest
-	if args.Num >= len(sc.configs) || args.Num < 0 {
-		DPrintf("config num %d out of range, len: %d", args.Num, len(sc.configs))
-		reply.Config = sc.configs[len(sc.configs)-1]
-	} else {
-		reply.Config = sc.configs[args.Num]
-	}
 }
 
 //
@@ -279,19 +190,23 @@ func (sc *ShardCtrler) Raft() *raft.Raft {
 // me is the index of the current server in servers[].
 //
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardCtrler {
+	labgob.Register(&Op{})
+	labgob.Register(&JoinArgs{})
+	labgob.Register(&LeaveArgs{})
+	labgob.Register(&MoveArgs{})
+	labgob.Register(&QueryArgs{})
 	sc := new(ShardCtrler)
 	sc.me = me
 
 	sc.configs = make([]Config, 1)
 	// config num is started from zero
 	sc.configs[0].Groups = map[int][]string{}
+	sc.subscriberMap = make(map[int64]map[int64]chan int)
 	sc.clientSerialNum = make(map[int64]int64)
-
-	labgob.Register(Op{})
 	sc.applyCh = make(chan raft.ApplyMsg)
 	sc.rf = raft.Make(servers, me, persister, sc.applyCh)
 
-	// Your code here.
+	go sc.applyObserver()
 
 	return sc
 }

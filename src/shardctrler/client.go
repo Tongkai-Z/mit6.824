@@ -13,6 +13,10 @@ import (
 	"6.824/labrpc"
 )
 
+const (
+	InitialSerialNumber = 1
+)
+
 type Clerk struct {
 	servers   []*labrpc.ClientEnd
 	id        int64
@@ -30,7 +34,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	ck.id = nrand()
-	ck.serialNum = 0
+	ck.serialNum = InitialSerialNumber
 	return ck
 }
 

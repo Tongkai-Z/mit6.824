@@ -1,6 +1,9 @@
 package shardctrler
 
-import "log"
+import (
+	"log"
+	"time"
+)
 
 //
 // Shard controler: assigns shards to replication groups.
@@ -31,16 +34,24 @@ type Config struct {
 }
 
 const (
-	OK    = "OK"
-	Debug = true
+	OK            = "OK"
+	Debug         = true
+	ServerTimeOut = 1 * time.Second
 )
 
 type Err string
-
 type JoinArgs struct {
 	Servers   map[int][]string // new GID -> servers mappings
 	SerialNum int64
 	ClientID  int64
+}
+
+func (a *JoinArgs) GetClientID() int64 {
+	return a.ClientID
+}
+
+func (a *JoinArgs) GetSerialNum() int64 {
+	return a.SerialNum
 }
 
 type JoinReply struct {
@@ -52,6 +63,14 @@ type LeaveArgs struct {
 	GIDs      []int
 	SerialNum int64
 	ClientID  int64
+}
+
+func (a *LeaveArgs) GetClientID() int64 {
+	return a.ClientID
+}
+
+func (a *LeaveArgs) GetSerialNum() int64 {
+	return a.SerialNum
 }
 
 type LeaveReply struct {
@@ -66,6 +85,14 @@ type MoveArgs struct {
 	ClientID  int64
 }
 
+func (a *MoveArgs) GetClientID() int64 {
+	return a.ClientID
+}
+
+func (a *MoveArgs) GetSerialNum() int64 {
+	return a.SerialNum
+}
+
 type MoveReply struct {
 	WrongLeader bool
 	Err         Err
@@ -75,6 +102,14 @@ type QueryArgs struct {
 	Num       int // desired config number
 	SerialNum int64
 	ClientID  int64
+}
+
+func (a *QueryArgs) GetClientID() int64 {
+	return a.ClientID
+}
+
+func (a *QueryArgs) GetSerialNum() int64 {
+	return a.SerialNum
 }
 
 type QueryReply struct {
