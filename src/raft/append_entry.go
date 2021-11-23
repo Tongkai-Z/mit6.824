@@ -179,7 +179,6 @@ func (rf *Raft) buildAppendEntriesArgs(args *AppendEntriesArgs, peer int) {
 	}
 	//DPrintf("args entries: %+v", args.Entries)
 	args.PrevLogIndex = max(rf.nextIndex[peer]-1, rf.log.LastIncludedIndex)
-	//FIXME: 3A bug: args.PrevLogIndex > log.len()
 	args.PrevLogIndex = min(args.PrevLogIndex, rf.log.Len())
 	args.PrevLogTerm = rf.log.LastIncludedTerm
 	if args.PrevLogIndex > rf.log.LastIncludedIndex {

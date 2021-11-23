@@ -77,7 +77,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// it will immediately update its term and turn to follower
 	// FIXME (done)update the receiver's term if it's smaller
 	// FIXME (done)should we update while we receive voterequest?
-	// this may cause the term to increase even no one get elected
+	// this may cause the term to increase even no one get elected which is acceptable
 	if args.Term > rf.currentTerm {
 		rf.currentTerm = args.Term
 		rf.state = 2

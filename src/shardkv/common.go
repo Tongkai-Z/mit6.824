@@ -1,5 +1,10 @@
 package shardkv
 
+import (
+	"log"
+	"time"
+)
+
 //
 // Sharded key/value server.
 // Lots of replica groups, each running op-at-a-time paxos.
@@ -10,10 +15,13 @@ package shardkv
 //
 
 const (
+	Debug          = true
+	ServerTimeOut  = 1 * time.Second
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongGroup  = "ErrWrongGroup"
 	ErrWrongLeader = "ErrWrongLeader"
+	ErrInternal    = "ErrInternal"
 )
 
 type Err string
@@ -21,12 +29,23 @@ type Err string
 // Put or Append
 type PutAppendArgs struct {
 	// You'll have to add definitions here.
-	Key   string
-	Value string
-	Op    string // "Put" or "Append"
-	// You'll have to add definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+	Key          string
+	Value        string
+	Op           string // "Put" or "Append"
+	SerialNumber int64
+	ClientID     int64
+}
+
+func (p *PutAppendArgs) GetKey() string {
+	return p.Key
+}
+
+func (p *PutAppendArgs) GetSerialNum() int64 {
+	return p.SerialNumber
+}
+
+func (p *PutAppendArgs) GetClientID() int64 {
+	return p.ClientID
 }
 
 type PutAppendReply struct {
@@ -34,11 +53,31 @@ type PutAppendReply struct {
 }
 
 type GetArgs struct {
-	Key string
-	// You'll have to add definitions here.
+	Key          string
+	SerialNumber int64
+	ClientID     int64
+}
+
+func (p *GetArgs) GetKey() string {
+	return p.Key
+}
+
+func (p *GetArgs) GetSerialNum() int64 {
+	return p.SerialNumber
+}
+
+func (p *GetArgs) GetClientID() int64 {
+	return p.ClientID
 }
 
 type GetReply struct {
 	Err   Err
 	Value string
+}
+
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+	if Debug {
+		log.Printf(format, a...)
+	}
+	return
 }

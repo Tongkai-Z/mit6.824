@@ -1,39 +1,76 @@
 package shardkv
 
+import (
+	"sync"
 
-import "6.824/labrpc"
-import "6.824/raft"
-import "sync"
-import "6.824/labgob"
-
-
-
-type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
-}
+	"6.824/labgob"
+	"6.824/labrpc"
+	"6.824/raft"
+	"6.824/shardctrler"
+)
 
 type ShardKV struct {
-	mu           sync.Mutex
-	me           int
-	rf           *raft.Raft
-	applyCh      chan raft.ApplyMsg
-	make_end     func(string) *labrpc.ClientEnd
-	gid          int
-	ctrlers      []*labrpc.ClientEnd
-	maxraftstate int // snapshot if log grows this big
+	mu      sync.Mutex
+	me      int
+	rf      *raft.Raft
+	applyCh chan raft.ApplyMsg
+	term    int32
 
-	// Your definitions here.
+	make_end  func(string) *labrpc.ClientEnd
+	gid       int
+	ctrlers   []*labrpc.ClientEnd
+	sc        *shardctrler.Clerk
+	configNum int
+
+	maxAppliedCmd int64
+	maxraftstate  int // snapshot if log grows this big
+
+	ma map[string]string // kv implementation
+	// subscriber map for leader node
+	subscriberMap map[int64]map[int64]chan int
+	//idempotent number for request
+	serialMap map[int64]int64
 }
 
-
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
+	resp := kv.Serve(args)
+	reply.Err = resp.GetErr()
+	if val := resp.GetValue(); val != nil {
+		reply.Value = *resp.GetValue()
+	}
 }
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
+	resp := kv.Serve(args)
+	reply.Err = resp.GetErr()
+}
+
+func (kv *ShardKV) get(args *GetArgs) *string {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	val := kv.ma[args.Key]
+	return &val
+}
+
+func (kv *ShardKV) putAppend(args *PutAppendArgs) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if kv.serialMap[args.ClientID] >= args.SerialNumber {
+		//already applied
+		DPrintf("[server %d]putAppend serial number %d from client %d duplicate call, key: %s, val: %s",
+			kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+		return
+	}
+	// update serial map
+	kv.serialMap[args.ClientID] = args.SerialNumber
+	putOrAppend := args.Op
+	if putOrAppend == "Append" {
+		kv.ma[args.Key] = kv.ma[args.Key] + args.Value
+	} else {
+		kv.ma[args.Key] = args.Value
+	}
+	DPrintf("[server %d]putAppend serial number %d from client %d applied, key: %s, val: %s",
+		kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
 }
 
 //
@@ -46,7 +83,6 @@ func (kv *ShardKV) Kill() {
 	kv.rf.Kill()
 	// Your code here, if desired.
 }
-
 
 //
 // servers[] contains the ports of the servers in this group.
@@ -79,7 +115,9 @@ func (kv *ShardKV) Kill() {
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, gid int, ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(Op{})
+	labgob.Register(&Op{})
+	labgob.Register(&PutAppendArgs{})
+	labgob.Register(&GetArgs{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -88,14 +126,16 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.gid = gid
 	kv.ctrlers = ctrlers
 
-	// Your initialization code here.
-
-	// Use something like this to talk to the shardctrler:
-	// kv.mck = shardctrler.MakeClerk(kv.ctrlers)
+	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
+	kv.ma = make(map[string]string)
+	kv.subscriberMap = make(map[int64]map[int64]chan int)
+	kv.serialMap = make(map[int64]int64)
+
+	go kv.applyObserver()
 
 	return kv
 }
