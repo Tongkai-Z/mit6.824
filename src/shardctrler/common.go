@@ -35,7 +35,7 @@ type Config struct {
 
 const (
 	OK            = "OK"
-	Debug         = true
+	Debug         = false
 	ServerTimeOut = 1 * time.Second
 )
 

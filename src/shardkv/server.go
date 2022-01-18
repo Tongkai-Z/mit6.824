@@ -2,6 +2,8 @@ package shardkv
 
 import (
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"6.824/labgob"
 	"6.824/labrpc"
@@ -15,19 +17,21 @@ type ShardKV struct {
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 	term    int32
+	dead    int32
 
-	make_end  func(string) *labrpc.ClientEnd
-	gid       int
-	ctrlers   []*labrpc.ClientEnd
-	sc        *shardctrler.Clerk
-	configNum int
+	make_end   func(string) *labrpc.ClientEnd
+	gid        int
+	ctrlers    []*labrpc.ClientEnd
+	sc         *shardctrler.Clerk
+	config     *shardctrler.Config
+	shardTable [shardctrler.NShards]int32 // status for each shard
 
 	maxAppliedCmd int64
 	maxraftstate  int // snapshot if log grows this big
 
 	ma map[string]string // kv implementation
 	// subscriber map for leader node
-	subscriberMap map[int64]map[int64]chan int
+	subscriberMap map[int64]map[int64]chan string
 	//idempotent number for request
 	serialMap map[int64]int64
 }
@@ -81,7 +85,11 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 //
 func (kv *ShardKV) Kill() {
 	kv.rf.Kill()
-	// Your code here, if desired.
+	atomic.StoreInt32(&kv.dead, 1)
+}
+
+func (kv *ShardKV) isKilled() bool {
+	return atomic.LoadInt32(&kv.dead) == int32(1)
 }
 
 //
@@ -118,6 +126,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	labgob.Register(&Op{})
 	labgob.Register(&PutAppendArgs{})
 	labgob.Register(&GetArgs{})
+	labgob.Register(&UpdateConfigArgs{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -127,15 +136,43 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.ctrlers = ctrlers
 
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
+	config := kv.sc.Query(-1)
+	kv.config = &config
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	kv.ma = make(map[string]string)
-	kv.subscriberMap = make(map[int64]map[int64]chan int)
+	kv.subscriberMap = make(map[int64]map[int64]chan string)
 	kv.serialMap = make(map[int64]int64)
 
 	go kv.applyObserver()
+	go kv.pollShardConfig()
 
 	return kv
+}
+
+func (kv *ShardKV) pollShardConfig() {
+	for !kv.isKilled() {
+		time.Sleep(PollConfigInterval)
+		_, isLeader := kv.rf.GetState()
+		if isLeader {
+			config := kv.sc.Query(-1)
+			DPrintf("[server %d] poll config", kv.me)
+			kv.mu.Lock()
+			if kv.config == nil || kv.config.Num < config.Num {
+				// config change
+				configArgs := &UpdateConfigArgs{
+					ConfigNum: config.Num,
+				}
+				commandIndex, _, isLeader := kv.rf.Start(&Op{
+					Args: configArgs,
+				})
+				if isLeader {
+					DPrintf("[server %d] replicate config cmd %d, %+v", kv.me, commandIndex, configArgs)
+				}
+			}
+			kv.mu.Unlock()
+		}
+	}
 }

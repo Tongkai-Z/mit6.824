@@ -46,6 +46,13 @@ func (g *GeneralReply) SetValue(val *string) {
 }
 
 func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
+	defer func() {
+		if reply.GetErr() != ErrWrongLeader {
+			DPrintf("[server %d] req: %+v, reply: %+v", kv.me, req, reply)
+		}
+
+	}()
+
 	reply = new(GeneralReply)
 	err := kv.checkProcessStatus(req.GetKey(), req.GetClientID(), req.GetSerialNum())
 	if err != "" {
@@ -76,20 +83,24 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 	}
 
 	// subscribe the opt and wait for applyChan
-	sub := make(chan int, 1)
+	sub := make(chan string, 1)
 	kv.subscribe(req.GetClientID(), req.GetSerialNum(), sub)
-	DPrintf("[server %d]subscribe for %s cmd %d, %+v, from [clerk %d]", kv.me, reflect.TypeOf(req), commandIndex, req, req.GetClientID())
+	DPrintf("[server %d]subscribe for %s cmd %d, %+v, from [clerk %d]",
+		kv.me, reflect.TypeOf(req), commandIndex, req, req.GetClientID())
 
 	select {
-	case _, ok := <-sub:
+	case msg, ok := <-sub:
 		if !ok { //chan closed
 			reply.SetErr(ErrInternal)
 			return
 		}
-		// if it's a get req, should return val
-		if getReq, ok := req.(*GetArgs); ok {
-			reply.SetValue(kv.get(getReq))
+		if msg == OK {
+			// if it's a get req, should return val
+			if getReq, ok := req.(*GetArgs); ok {
+				reply.SetValue(kv.get(getReq))
+			}
 		}
+		reply.SetErr(Err(msg))
 		DPrintf("[server %d]cmd %d, notified from [clerk %d] serial number: %d", kv.me, commandIndex, req.GetClientID(), req.GetSerialNum())
 	case <-time.After(ServerTimeOut):
 		reply.SetErr(ErrInternal)

@@ -11,6 +11,7 @@ package shardkv
 import (
 	"crypto/rand"
 	"math/big"
+	"sync/atomic"
 	"time"
 
 	"6.824/labrpc"
@@ -39,10 +40,11 @@ func nrand() int64 {
 }
 
 type Clerk struct {
-	sm       *shardctrler.Clerk
-	config   shardctrler.Config
-	make_end func(string) *labrpc.ClientEnd
-	// You will have to modify this struct.
+	sm           *shardctrler.Clerk
+	config       shardctrler.Config
+	make_end     func(string) *labrpc.ClientEnd
+	clientID     int64
+	serialNumber int64
 }
 
 //
@@ -58,7 +60,8 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck := new(Clerk)
 	ck.sm = shardctrler.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	// You'll have to add code here.
+	ck.clientID = nrand()
+	ck.serialNumber = 1
 	return ck
 }
 
@@ -71,7 +74,9 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 func (ck *Clerk) Get(key string) string {
 	args := GetArgs{}
 	args.Key = key
-
+	args.ClientID = ck.clientID
+	args.SerialNumber = atomic.LoadInt64(&ck.serialNumber)
+	atomic.AddInt64(&ck.serialNumber, 1)
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -105,6 +110,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Key = key
 	args.Value = value
 	args.Op = op
+	args.ClientID = ck.clientID
+	args.SerialNumber = atomic.LoadInt64(&ck.serialNumber)
+	atomic.AddInt64(&ck.serialNumber, 1)
 
 	for {
 		shard := key2shard(key)

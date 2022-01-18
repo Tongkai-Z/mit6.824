@@ -15,13 +15,15 @@ import (
 //
 
 const (
-	Debug          = true
-	ServerTimeOut  = 1 * time.Second
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongGroup  = "ErrWrongGroup"
-	ErrWrongLeader = "ErrWrongLeader"
-	ErrInternal    = "ErrInternal"
+	Debug              = true
+	ServerTimeOut      = 1 * time.Second
+	PollConfigInterval = 100 * time.Millisecond
+	OK                 = "OK"
+	ApplySuccess       = "Success"
+	ErrNoKey           = "ErrNoKey"
+	ErrWrongGroup      = "ErrWrongGroup"
+	ErrWrongLeader     = "ErrWrongLeader"
+	ErrInternal        = "ErrInternal"
 )
 
 type Err string
@@ -80,4 +82,8 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 		log.Printf(format, a...)
 	}
 	return
+}
+
+type UpdateConfigArgs struct {
+	ConfigNum int
 }

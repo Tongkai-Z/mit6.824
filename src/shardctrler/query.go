@@ -16,7 +16,7 @@ func (sc *ShardCtrler) query(args *QueryArgs) *Config {
 	// get the config
 	// -1 or bigger than the largest config num, return latest
 	if args.Num >= len(sc.configs) || args.Num < 0 {
-		DPrintf("config num %d out of range, len: %d", args.Num, len(sc.configs))
+		// DPrintf("config num %d out of range, len: %d", args.Num, len(sc.configs))
 		ret = sc.configs[len(sc.configs)-1]
 	} else {
 		ret = sc.configs[args.Num]
