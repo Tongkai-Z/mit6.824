@@ -24,6 +24,8 @@ const (
 	ErrWrongGroup      = "ErrWrongGroup"
 	ErrWrongLeader     = "ErrWrongLeader"
 	ErrInternal        = "ErrInternal"
+	ShardReady         = 0
+	ShardPending       = 1
 )
 
 type Err string
@@ -86,4 +88,16 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 
 type UpdateConfigArgs struct {
 	ConfigNum int
+}
+
+type MigrationArgs struct {
+	Shard     int
+	DesGid    int
+	Version   int32
+	ConfigNum int
+	PayLoad   map[string]string
+}
+
+type MigrationReply struct {
+	Err Err
 }

@@ -3,7 +3,6 @@ package shardkv
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"6.824/labgob"
 	"6.824/labrpc"
@@ -19,17 +18,19 @@ type ShardKV struct {
 	term    int32
 	dead    int32
 
-	make_end   func(string) *labrpc.ClientEnd
-	gid        int
-	ctrlers    []*labrpc.ClientEnd
-	sc         *shardctrler.Clerk
-	config     *shardctrler.Config
-	shardTable [shardctrler.NShards]int32 // status for each shard
+	make_end           func(string) *labrpc.ClientEnd
+	gid                int
+	ctrlers            []*labrpc.ClientEnd
+	sc                 *shardctrler.Clerk
+	config             *shardctrler.Config
+	shardTable         [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
+	shardVersion       [shardctrler.NShards]int32
+	shardMigrationChan chan *MigrationArgs
 
 	maxAppliedCmd int64
 	maxraftstate  int // snapshot if log grows this big
 
-	ma map[string]string // kv implementation
+	ma [shardctrler.NShards]map[string]string // kv implementation shard map
 	// subscriber map for leader node
 	subscriberMap map[int64]map[int64]chan string
 	//idempotent number for request
@@ -52,7 +53,8 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 func (kv *ShardKV) get(args *GetArgs) *string {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	val := kv.ma[args.Key]
+	ma := kv.ma[key2shard(args.Key)]
+	val := ma[args.Key]
 	return &val
 }
 
@@ -61,20 +63,22 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 	defer kv.mu.Unlock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		//already applied
-		DPrintf("[server %d]putAppend serial number %d from client %d duplicate call, key: %s, val: %s",
-			kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d duplicate call, key: %s, val: %s",
+			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, kv.ma[key2shard(args.Key)][args.Key])
 		return
 	}
 	// update serial map
 	kv.serialMap[args.ClientID] = args.SerialNumber
 	putOrAppend := args.Op
+	shard := key2shard(args.Key)
+	ma := kv.ma[shard]
 	if putOrAppend == "Append" {
-		kv.ma[args.Key] = kv.ma[args.Key] + args.Value
+		ma[args.Key] = ma[args.Key] + args.Value
 	} else {
-		kv.ma[args.Key] = args.Value
+		ma[args.Key] = args.Value
 	}
-	DPrintf("[server %d]putAppend serial number %d from client %d applied, key: %s, val: %s",
-		kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+	DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, key: %s, shard: %d, val: %s",
+		kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, shard, ma[args.Key])
 }
 
 //
@@ -127,6 +131,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	labgob.Register(&PutAppendArgs{})
 	labgob.Register(&GetArgs{})
 	labgob.Register(&UpdateConfigArgs{})
+	labgob.Register(&MigrationArgs{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -138,41 +143,21 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
 	config := kv.sc.Query(-1)
 	kv.config = &config
+	kv.shardMigrationChan = make(chan *MigrationArgs, 10000)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
-	kv.ma = make(map[string]string)
+	for idx, _ := range kv.ma {
+		kv.ma[idx] = make(map[string]string)
+	}
+
 	kv.subscriberMap = make(map[int64]map[int64]chan string)
 	kv.serialMap = make(map[int64]int64)
 
 	go kv.applyObserver()
 	go kv.pollShardConfig()
+	go kv.shardMigrationProcessor()
 
 	return kv
-}
-
-func (kv *ShardKV) pollShardConfig() {
-	for !kv.isKilled() {
-		time.Sleep(PollConfigInterval)
-		_, isLeader := kv.rf.GetState()
-		if isLeader {
-			config := kv.sc.Query(-1)
-			DPrintf("[server %d] poll config", kv.me)
-			kv.mu.Lock()
-			if kv.config == nil || kv.config.Num < config.Num {
-				// config change
-				configArgs := &UpdateConfigArgs{
-					ConfigNum: config.Num,
-				}
-				commandIndex, _, isLeader := kv.rf.Start(&Op{
-					Args: configArgs,
-				})
-				if isLeader {
-					DPrintf("[server %d] replicate config cmd %d, %+v", kv.me, commandIndex, configArgs)
-				}
-			}
-			kv.mu.Unlock()
-		}
-	}
 }

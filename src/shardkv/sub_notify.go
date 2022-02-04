@@ -52,7 +52,9 @@ func (kv *ShardKV) applyCommand(op *Op, cmdIdx int) {
 			kv.publishCommand(op.ClientID, op.SerialNumber, msg)
 		}
 	case *UpdateConfigArgs:
-		kv.updateConfig(args)
+		kv.reConfig(args.ConfigNum)
+	case *MigrationArgs:
+		kv.updateShards(args)
 	}
 }
 
