@@ -15,7 +15,8 @@ import (
 //
 
 const (
-	Debug              = true
+	Debug = false
+
 	ServerTimeOut      = 1 * time.Second
 	PollConfigInterval = 100 * time.Millisecond
 	OK                 = "OK"

@@ -163,7 +163,7 @@ func (kv *ShardKV) MigrationShard(args *MigrationArgs, reply *MigrationReply) {
 	kv.mu.Lock()
 	version := kv.shardVersion[args.Shard]
 	kv.mu.Unlock()
-	if version >= args.Version {
+	if version >= args.Version { // shard already applied
 		reply.Err = OK
 		return
 	}
@@ -181,6 +181,7 @@ func (kv *ShardKV) MigrationShard(args *MigrationArgs, reply *MigrationReply) {
 
 }
 
+// Should update config consecutively
 func (kv *ShardKV) updateShards(args *MigrationArgs) {
 	kv.mu.Lock()
 	currConfigNum := kv.config.Num
