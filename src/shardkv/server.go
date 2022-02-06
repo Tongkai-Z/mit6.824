@@ -11,21 +11,21 @@ import (
 )
 
 type ShardKV struct {
-	mu      sync.Mutex
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
-	term    int32
-	dead    int32
+	mu           sync.Mutex
+	me           int
+	rf           *raft.Raft
+	applyCh      chan raft.ApplyMsg
+	term         int32
+	dead         int32
+	serialNumber int64 // used for migrationShards
 
-	make_end           func(string) *labrpc.ClientEnd
-	gid                int
-	ctrlers            []*labrpc.ClientEnd
-	sc                 *shardctrler.Clerk
-	config             *shardctrler.Config
-	shardTable         [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
-	shardVersion       [shardctrler.NShards]int32
-	shardMigrationChan chan *MigrationArgs
+	make_end         func(string) *labrpc.ClientEnd
+	gid              int
+	ctrlers          []*labrpc.ClientEnd
+	sc               *shardctrler.Clerk
+	config           *shardctrler.Config
+	shardTable       [shardctrler.NShards]int32 // status for each shard, 0: ready 1: need to send 2: wait to receive
+	configUpdateChan chan *shardctrler.Config
 
 	maxAppliedCmd int64
 	maxraftstate  int // snapshot if log grows this big
@@ -77,8 +77,10 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 	} else {
 		ma[args.Key] = args.Value
 	}
-	DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, key: %s, shard: %d, val: %s",
-		kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, shard, ma[args.Key])
+	if _, isLeader := kv.rf.GetState(); isLeader || !LeaderLog {
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, key: %s, shard: %d, val: %s",
+			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, shard, ma[args.Key])
+	}
 }
 
 //
@@ -132,6 +134,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	labgob.Register(&GetArgs{})
 	labgob.Register(&UpdateConfigArgs{})
 	labgob.Register(&MigrationArgs{})
+	labgob.Register(&AlterShardStatus{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -139,11 +142,12 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.make_end = make_end
 	kv.gid = gid
 	kv.ctrlers = ctrlers
+	kv.serialNumber = 1
 
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
 	config := kv.sc.Query(-1)
 	kv.config = &config
-	kv.shardMigrationChan = make(chan *MigrationArgs, 10000)
+	kv.configUpdateChan = make(chan *shardctrler.Config, 100)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
@@ -157,7 +161,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 	go kv.applyObserver()
 	go kv.pollShardConfig()
-	go kv.shardMigrationProcessor()
+	go kv.updateConfigProcessor()
 
 	return kv
 }

@@ -13,9 +13,8 @@ type ServerPersistedState struct {
 	Ma            [shardctrler.NShards]map[string]string
 	SerialMap     map[int64]int64
 
-	Config       *shardctrler.Config
-	ShardTable   [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
-	ShardVersion [shardctrler.NShards]int32
+	Config     *shardctrler.Config
+	ShardTable [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
 }
 
 // this function checks whether the raft log exceeds the raftmaxstate
@@ -41,9 +40,8 @@ func (kv *ShardKV) encodeState() []byte {
 		Ma:            kv.ma,
 		SerialMap:     kv.serialMap,
 
-		Config:       kv.config,
-		ShardTable:   kv.shardTable,
-		ShardVersion: kv.shardVersion,
+		Config:     kv.config,
+		ShardTable: kv.shardTable,
 	}
 	e.Encode(s)
 	return w.Bytes()
@@ -68,7 +66,6 @@ func (kv *ShardKV) applySnapshot(term, index int, snapshot []byte) {
 
 			kv.config = decoded.Config
 			kv.shardTable = decoded.ShardTable
-			kv.shardVersion = decoded.ShardVersion
 			// DPrintf("[server %d] snapshot appied, index: %d", kv.me, kv.maxAppliedCmd)
 		}
 

@@ -9,6 +9,7 @@ type shardKVReq interface {
 	GetKey() string
 	GetSerialNum() int64
 	GetClientID() int64
+	GetConfigNum() int
 }
 
 type shardKvReply interface {
@@ -71,10 +72,18 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 	kv.mu.Lock()
 	if kv.serialMap[req.GetClientID()] >= req.GetSerialNum() {
 		kv.mu.Unlock()
+		reply.SetErr(OK)
 		return
 
 	}
 	kv.mu.Unlock()
+
+	// check config
+	err = kv.checkConfig(req.GetConfigNum())
+	if err != "" {
+		reply.SetErr(err)
+		return
+	}
 
 	// replicate opt via Raft
 	op := &Op{
@@ -108,9 +117,11 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 			}
 		}
 		reply.SetErr(Err(msg))
-		DPrintf("[server %d group %d]cmd %d, notified from [clerk %d] serial number: %d", kv.me, kv.gid, commandIndex, req.GetClientID(), req.GetSerialNum())
+		DPrintf("[server %d group %d]cmd %d, notified from [clerk %d] serial number: %d, msg: %s", kv.me, kv.gid, commandIndex, req.GetClientID(), req.GetSerialNum(), msg)
 	case <-time.After(ServerTimeOut):
-		reply.SetErr(ErrInternal)
+		DPrintf("[server %d group %d]timeout cmd %d, %+v, from [clerk %d]",
+			kv.me, kv.gid, commandIndex, req, req.GetClientID())
+		reply.SetErr(ErrTimeOut)
 		return
 	}
 	return
@@ -122,9 +133,6 @@ func (kv *ShardKV) checkProcessStatus(key string, clientID, serialNumber int64) 
 	if !isLeader {
 		return ErrWrongLeader
 	}
-
-	// check key mapping
-	// TODO get latest config
 
 	kv.mu.Lock()
 	// lower term let req pass
@@ -142,7 +150,7 @@ func (kv *ShardKV) checkProcessStatus(key string, clientID, serialNumber int64) 
 		if sub, ok := kv.subscriberMap[clientID]; ok {
 			if _, ok := sub[serialNumber]; ok {
 				kv.mu.Unlock()
-				return ErrInternal
+				return ErrInprogress
 			}
 		}
 	}
