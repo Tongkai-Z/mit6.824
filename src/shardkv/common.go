@@ -16,6 +16,7 @@ import (
 
 const (
 	Debug              = true
+	LeaderLog          = true
 	ServerTimeOut      = 1 * time.Second
 	PollConfigInterval = 100 * time.Millisecond
 	OK                 = "OK"
@@ -23,9 +24,13 @@ const (
 	ErrNoKey           = "ErrNoKey"
 	ErrWrongGroup      = "ErrWrongGroup"
 	ErrWrongLeader     = "ErrWrongLeader"
+	ErrConfigNotMatch  = "ErrConfigNotMatch"
 	ErrInternal        = "ErrInternal"
+	ErrKeyNotReady     = "ErrKeyNotReady"
+	ErrTimeOut         = "ErrTimeOut"
 	ShardReady         = 0
-	ShardPending       = 1
+	ShardNeedToBeSent  = 1
+	ShardPending       = 2
 )
 
 type Err string
@@ -91,13 +96,31 @@ type UpdateConfigArgs struct {
 }
 
 type MigrationArgs struct {
-	Shard     int
-	DesGid    int
-	Version   int32
-	ConfigNum int
-	PayLoad   map[string]string
+	Shard        int
+	DesGid       int
+	ConfigNum    int
+	PayLoad      map[string]string
+	SerialNumber int64
+	ClientID     int64
 }
 
 type MigrationReply struct {
 	Err Err
+}
+
+type AlterShardStatus struct {
+	Shard  int
+	Status int
+}
+
+func (p *MigrationArgs) GetKey() string {
+	return ""
+}
+
+func (p *MigrationArgs) GetSerialNum() int64 {
+	return p.SerialNumber
+}
+
+func (p *MigrationArgs) GetClientID() int64 {
+	return p.ClientID
 }

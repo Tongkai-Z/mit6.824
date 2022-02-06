@@ -118,8 +118,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
-			for si := 0; si < len(servers); si++ {
-				srv := ck.make_end(servers[si])
+			// FIXME: timeout may exit loop and cause client to query new config
+			for si := 0; ; si++ {
+				srv := ck.make_end(servers[si%len(servers)])
 				var reply PutAppendReply
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
 				if ok && reply.Err == OK {
@@ -128,6 +129,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				if ok && reply.Err == ErrWrongGroup {
 					break
 				}
+				// not wrong
 				// ... not ok, or ErrWrongLeader
 			}
 		}

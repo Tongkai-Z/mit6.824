@@ -54,7 +54,12 @@ func (kv *ShardKV) applyCommand(op *Op, cmdIdx int) {
 	case *UpdateConfigArgs:
 		kv.reConfig(args.ConfigNum)
 	case *MigrationArgs:
-		kv.updateShards(args)
+		msg := kv.updateShards(args)
+		if _, isLeader := kv.rf.GetState(); isLeader {
+			kv.publishCommand(op.ClientID, op.SerialNumber, msg)
+		}
+	case *AlterShardStatus:
+		kv.updateShardstatus(args)
 	}
 }
 

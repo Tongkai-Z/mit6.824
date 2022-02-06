@@ -71,6 +71,7 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 	kv.mu.Lock()
 	if kv.serialMap[req.GetClientID()] >= req.GetSerialNum() {
 		kv.mu.Unlock()
+		reply.SetErr(OK)
 		return
 
 	}
@@ -108,9 +109,11 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 			}
 		}
 		reply.SetErr(Err(msg))
-		DPrintf("[server %d group %d]cmd %d, notified from [clerk %d] serial number: %d", kv.me, kv.gid, commandIndex, req.GetClientID(), req.GetSerialNum())
+		DPrintf("[server %d group %d]cmd %d, notified from [clerk %d] serial number: %d, msg: %s", kv.me, kv.gid, commandIndex, req.GetClientID(), req.GetSerialNum(), msg)
 	case <-time.After(ServerTimeOut):
-		reply.SetErr(ErrInternal)
+		DPrintf("[server %d group %d]timeout cmd %d, %+v, from [clerk %d]",
+			kv.me, kv.gid, commandIndex, req, req.GetClientID())
+		reply.SetErr(ErrTimeOut)
 		return
 	}
 	return
@@ -122,9 +125,6 @@ func (kv *ShardKV) checkProcessStatus(key string, clientID, serialNumber int64) 
 	if !isLeader {
 		return ErrWrongLeader
 	}
-
-	// check key mapping
-	// TODO get latest config
 
 	kv.mu.Lock()
 	// lower term let req pass
