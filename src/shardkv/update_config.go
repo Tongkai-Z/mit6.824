@@ -43,8 +43,8 @@ func (kv *ShardKV) checkShard(key string) string {
 	}
 
 	// check shard migration status
-	if kv.shardTable[shard] != ShardReady {
-		DPrintf("[server %d gid %d] check shard key: %s, shard: %d status: %d", kv.me, kv.gid, key, shard, kv.shardTable[shard])
+	if kv.shardTable[shard] != kv.config.Num {
+		DPrintf("[server %d gid %d] check shard key: %s, shard: %d version: %d, config version: %d", kv.me, kv.gid, key, shard, kv.shardTable[shard], kv.config.Num)
 		return ErrInternal // let client retry
 	}
 
@@ -53,17 +53,30 @@ func (kv *ShardKV) checkShard(key string) string {
 }
 
 // Process reconfiguration one at a time in order
-// reconfig should not skip
+// reconfig should not skip configs
 func (kv *ShardKV) reConfig(num int) {
 	currConfig := kv.sc.Query(num)
 	kv.mu.Lock()
 	prevConfig := kv.config
 	if prevConfig == nil || prevConfig.Num < currConfig.Num {
-		DPrintf("[server %d gid %d] config updated, prev %d, curr %d, shard2Gid: %v", kv.me, kv.gid, kv.config.Num, currConfig.Num, currConfig.Shards)
+		prevNum := 0
+		if prevConfig != nil {
+			prevNum = prevConfig.Num
+		}
+		DPrintf("[server %d gid %d] config updated, prev %d, curr %d, shard2Gid: %v", kv.me, kv.gid, prevNum, currConfig.Num, currConfig.Shards)
 		kv.config = &currConfig
 	}
 	kv.mu.Unlock()
-	kv.updateShardTable(prevConfig, &currConfig)
+	currNum := 0
+	if prevConfig != nil {
+		currNum = prevConfig.Num
+	}
+	for currNum <= num {
+		next := kv.sc.Query(currNum + 1)
+		kv.updateShardTable(prevConfig, &next)
+		prevConfig = &next
+		currNum = next.Num
+	}
 
 }
 
@@ -75,30 +88,41 @@ func (kv *ShardKV) updateShardTable(prev *shardctrler.Config, curr *shardctrler.
 		return
 	}
 
-	if prev == nil || prev.Num == 0 {
-		return
-	}
-
 	for shard, currGid := range curr.Shards {
 		if currGid == kv.gid {
-			if prev.Shards[shard] != kv.gid {
+			if prev == nil || prev.Num == 0 {
 				kv.mu.Lock()
-				kv.shardTable[shard] = ShardPending
+				kv.shardTable[shard] = curr.Num
 				kv.mu.Unlock()
+			} else if prev.Shards[shard] == kv.gid { // non-migration shard
+				go func() {
+					for {
+						kv.mu.Lock()
+						currVersion := kv.shardTable[shard]
+						if currVersion == prev.Num {
+							kv.shardTable[shard] = curr.Num
+							kv.mu.Unlock()
+							return
+						}
+						kv.mu.Unlock()
+					}
+				}()
 			}
-		} else if prev.Shards[shard] == kv.gid { // ready or pending
-			kv.mu.Lock()
-			version := kv.shardVersion[shard] + 1
-			kv.mu.Unlock()
+		} else if prev != nil && prev.Shards[shard] == kv.gid { // ready or pending
 			// migration to currGid
 			kv.shardMigrationChan <- &MigrationArgs{
-				Shard:   shard,
-				DesGid:  currGid,
-				Version: version,
+				Shard:       shard,
+				DesGid:      currGid,
+				PrevVersion: prev.Num,
+				Version:     curr.Num,
 			}
 		}
 	}
-	DPrintf("[server %d gid %d] shard table updated: %+v", kv.me, kv.gid, kv.shardTable)
+	prevShard := [10]int{}
+	if prev != nil {
+		prevShard = prev.Shards
+	}
+	DPrintf("[server %d gid %d] shard table updated: %+v, prev: %v, cur: %v", kv.me, kv.gid, kv.shardTable, prevShard, curr.Shards)
 }
 
 func (kv *ShardKV) shardMigrationProcessor() {
@@ -121,10 +145,10 @@ func (kv *ShardKV) sendShardToGroup(args *MigrationArgs) {
 
 	for { // wait until shard is ready
 		kv.mu.Lock()
-		status := kv.shardTable[args.Shard]
+		version := kv.shardTable[args.Shard]
 		kv.mu.Unlock()
 
-		if status == ShardReady {
+		if version == args.PrevVersion {
 			// fetch shard data
 			kv.mu.Lock()
 			args.PayLoad = make(map[string]string)
@@ -161,7 +185,7 @@ func (kv *ShardKV) MigrationShard(args *MigrationArgs, reply *MigrationReply) {
 	}
 	// update shard version first
 	kv.mu.Lock()
-	version := kv.shardVersion[args.Shard]
+	version := kv.shardTable[args.Shard]
 	kv.mu.Unlock()
 	if version >= args.Version { // shard already applied
 		reply.Err = OK
@@ -185,7 +209,7 @@ func (kv *ShardKV) MigrationShard(args *MigrationArgs, reply *MigrationReply) {
 func (kv *ShardKV) updateShards(args *MigrationArgs) {
 	kv.mu.Lock()
 	currConfigNum := kv.config.Num
-	version := kv.shardVersion[args.Shard]
+	version := kv.shardTable[args.Shard]
 	kv.mu.Unlock()
 	// check if config need to be updated
 	if args.ConfigNum > currConfigNum {
@@ -195,14 +219,24 @@ func (kv *ShardKV) updateShards(args *MigrationArgs) {
 	if version >= args.Version {
 		return
 	}
-	kv.mu.Lock()
-	// check shard version
-	for key, val := range args.PayLoad {
-		kv.ma[args.Shard][key] = val
-	}
-	kv.shardTable[args.Shard] = ShardReady
-	kv.shardVersion[args.Shard] = args.Version
-	kv.mu.Unlock()
 
-	DPrintf("[server %d gid %d] shard %d installed, version: %d", kv.me, kv.gid, args.Shard, args.Version)
+	// must wait until version == args.PreVersion
+	go func() {
+		for {
+			kv.mu.Lock()
+			currVer := kv.shardTable[args.Shard]
+			if currVer == args.PrevVersion {
+				// check shard version
+				for key, val := range args.PayLoad {
+					kv.ma[args.Shard][key] = val
+				}
+				kv.shardTable[args.Shard] = args.Version
+				kv.mu.Unlock()
+				DPrintf("[server %d gid %d] shard %d installed, version: %d", kv.me, kv.gid, args.Shard, args.Version)
+				return
+			}
+			kv.mu.Unlock()
+		}
+	}()
+
 }

@@ -23,8 +23,7 @@ type ShardKV struct {
 	ctrlers            []*labrpc.ClientEnd
 	sc                 *shardctrler.Clerk
 	config             *shardctrler.Config
-	shardTable         [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
-	shardVersion       [shardctrler.NShards]int32
+	shardTable         [shardctrler.NShards]int
 	shardMigrationChan chan *MigrationArgs
 
 	maxAppliedCmd int64
@@ -141,8 +140,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.ctrlers = ctrlers
 
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
-	config := kv.sc.Query(-1)
-	kv.config = &config
 	kv.shardMigrationChan = make(chan *MigrationArgs, 10000)
 
 	kv.applyCh = make(chan raft.ApplyMsg)

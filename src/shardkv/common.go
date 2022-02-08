@@ -15,7 +15,7 @@ import (
 //
 
 const (
-	Debug = false
+	Debug = true
 
 	ServerTimeOut      = 1 * time.Second
 	PollConfigInterval = 100 * time.Millisecond
@@ -92,11 +92,12 @@ type UpdateConfigArgs struct {
 }
 
 type MigrationArgs struct {
-	Shard     int
-	DesGid    int
-	Version   int32
-	ConfigNum int
-	PayLoad   map[string]string
+	Shard       int
+	DesGid      int
+	PrevVersion int
+	Version     int
+	ConfigNum   int
+	PayLoad     map[string]string
 }
 
 type MigrationReply struct {
