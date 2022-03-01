@@ -37,22 +37,25 @@ func (kv *ShardKV) applyCommand(op *Op, cmdIdx int) {
 
 	switch args := op.Args.(type) {
 	case *GetArgs:
-		msg := kv.checkShard(args.Key)
 		// do nothing
 		// leader node pub
+		msg := kv.checkConfigAndShard(args.ConfigNum, args.Key)
 		if _, isLeader := kv.rf.GetState(); isLeader {
-			kv.publishCommand(op.ClientID, op.SerialNumber, msg)
+			kv.publishCommand(op.ClientID, op.SerialNumber, string(msg))
 		}
 	case *PutAppendArgs:
-		msg := kv.checkShard(args.Key)
+		// check config and shard
+
+		msg := kv.checkConfigAndShard(args.ConfigNum, args.Key)
+
 		if msg == OK {
 			kv.putAppend(args)
 		}
 		if _, isLeader := kv.rf.GetState(); isLeader {
-			kv.publishCommand(op.ClientID, op.SerialNumber, msg)
+			kv.publishCommand(op.ClientID, op.SerialNumber, string(msg))
 		}
 	case *UpdateConfigArgs:
-		kv.reConfig(args.ConfigNum)
+		kv.updateConfig(args.ConfigNum)
 	case *MigrationArgs:
 		msg := kv.updateShards(args)
 		if _, isLeader := kv.rf.GetState(); isLeader {
@@ -72,4 +75,16 @@ func (kv *ShardKV) publishCommand(clientID, serialNumber int64, msg string) {
 			delete(sub, serialNumber)
 		}
 	}
+}
+
+func (kv *ShardKV) checkConfigAndShard(configNum int, key string) Err {
+	configErr := kv.checkConfig(configNum)
+	if configErr != OK {
+		return configErr
+	}
+	shardErr := kv.checkShard(key)
+	if shardErr != OK {
+		return Err(shardErr)
+	}
+	return OK
 }

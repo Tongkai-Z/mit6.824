@@ -16,7 +16,7 @@ import (
 
 const (
 	Debug              = true
-	LeaderLog          = false
+	LeaderLog          = true
 	ServerTimeOut      = 1 * time.Second
 	PollConfigInterval = 100 * time.Millisecond
 	OK                 = "OK"
@@ -120,8 +120,9 @@ type MigrationReply struct {
 }
 
 type AlterShardStatus struct {
-	Shard  int
-	Status int
+	Shard     int
+	Status    int
+	SerialNum int64
 }
 
 func (p *MigrationArgs) GetKey() string {

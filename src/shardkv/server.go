@@ -19,13 +19,13 @@ type ShardKV struct {
 	dead         int32
 	serialNumber int64 // used for migrationShards
 
-	make_end         func(string) *labrpc.ClientEnd
-	gid              int
-	ctrlers          []*labrpc.ClientEnd
-	sc               *shardctrler.Clerk
-	config           *shardctrler.Config
-	shardTable       [shardctrler.NShards]int32 // status for each shard, 0: ready 1: need to send 2: wait to receive
-	configUpdateChan chan *shardctrler.Config
+	make_end     func(string) *labrpc.ClientEnd
+	gid          int
+	ctrlers      []*labrpc.ClientEnd
+	sc           *shardctrler.Clerk
+	config       *shardctrler.Config
+	shardTable   [shardctrler.NShards]int32 // status for each shard, 0: ready 1: need to send 2: wait to receive
+	targetConfig int
 
 	maxAppliedCmd int64
 	maxraftstate  int // snapshot if log grows this big
@@ -63,7 +63,7 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 	defer kv.mu.Unlock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		//already applied
-		DPrintf("[server %d group %d]putAppend serial number %d from client %d duplicate call, key: %s, val: %s",
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d duplicate call, Key:%s, val: %s",
 			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, kv.ma[key2shard(args.Key)][args.Key])
 		return
 	}
@@ -78,7 +78,7 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 		ma[args.Key] = args.Value
 	}
 	if _, isLeader := kv.rf.GetState(); isLeader || !LeaderLog {
-		DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, key: %s, shard: %d, val: %s",
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, Key:%s, shard: %d, val: %s",
 			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, shard, ma[args.Key])
 	}
 }
@@ -145,9 +145,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.serialNumber = 1
 
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
-	config := kv.sc.Query(-1)
-	kv.config = &config
-	kv.configUpdateChan = make(chan *shardctrler.Config, 100)
+	kv.targetConfig = 0
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)

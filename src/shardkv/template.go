@@ -55,9 +55,15 @@ func stringVal(ptr *string) string {
 
 func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 	defer func() {
+		kv.mu.Lock()
 		if reply.GetErr() != ErrWrongLeader {
-			DPrintf("[server %d group %d] req: %+v, Err: %v, Value: %v", kv.me, kv.gid, req, reply.GetErr(), stringVal(reply.GetValue()))
+			configNum := 0
+			if kv.config != nil {
+				configNum = kv.config.Num
+			}
+			DPrintf("[server %d group %d] configNum: %d, shardTab: %v, targetConfig: %d req: %+v, Err: %v, Value: %v", kv.me, kv.gid, configNum, kv.shardTable, kv.targetConfig, req, reply.GetErr(), stringVal(reply.GetValue()))
 		}
+		kv.mu.Unlock()
 
 	}()
 
@@ -78,9 +84,15 @@ func (kv *ShardKV) Serve(req shardKVReq) (reply shardKvReply) {
 	}
 	kv.mu.Unlock()
 
-	// check config
+	// check config and shard
 	err = kv.checkConfig(req.GetConfigNum())
-	if err != "" {
+	if err != OK {
+		reply.SetErr(err)
+		return
+	}
+
+	err = Err(kv.checkShard(req.GetKey()))
+	if err != OK {
 		reply.SetErr(err)
 		return
 	}

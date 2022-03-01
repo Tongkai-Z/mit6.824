@@ -93,6 +93,9 @@ func (ck *Clerk) Get(key string) string {
 				if ok && (reply.Err == ErrWrongGroup || reply.Err == ErrConfigNotMatch) {
 					break
 				}
+				if ok && reply.Err == ErrKeyNotReady {
+					time.Sleep(100 * time.Millisecond)
+				}
 				// ... not ok, or ErrWrongLeader
 			}
 		}
@@ -130,6 +133,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				}
 				if ok && (reply.Err == ErrWrongGroup || reply.Err == ErrConfigNotMatch) {
 					break
+				}
+
+				if ok && reply.Err == ErrKeyNotReady {
+					time.Sleep(100 * time.Millisecond)
 				}
 				// not wrong
 				// ... not ok, or ErrWrongLeader

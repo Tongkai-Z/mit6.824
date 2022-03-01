@@ -66,7 +66,7 @@ func (kv *ShardKV) applySnapshot(term, index int, snapshot []byte) {
 
 			kv.config = decoded.Config
 			kv.shardTable = decoded.ShardTable
-			// DPrintf("[server %d] snapshot appied, index: %d", kv.me, kv.maxAppliedCmd)
+			DPrintf("[server %d group %d] snapshot appied, index: %d", kv.me, kv.gid, kv.maxAppliedCmd)
 		}
 
 	}
