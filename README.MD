@@ -169,6 +169,10 @@ ok 6.824/kvraft 224.004s
 
 pass all test for partA
 
+### Mar 1 (2022)
+
+pass all except delete test for partB
+
 ## Todo
 
 1. raft: batch process start cmd instead of one cmd one goroutine, checkApply
