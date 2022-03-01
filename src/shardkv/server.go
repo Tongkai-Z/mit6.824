@@ -2,6 +2,7 @@ package shardkv
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"6.824/labgob"
 	"6.824/labrpc"
@@ -10,24 +11,28 @@ import (
 )
 
 type ShardKV struct {
-	mu      sync.Mutex
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
-	term    int32
+	mu           sync.Mutex
+	me           int
+	rf           *raft.Raft
+	applyCh      chan raft.ApplyMsg
+	term         int32
+	dead         int32
+	serialNumber int64 // used for migrationShards
 
-	make_end  func(string) *labrpc.ClientEnd
-	gid       int
-	ctrlers   []*labrpc.ClientEnd
-	sc        *shardctrler.Clerk
-	configNum int
+	make_end     func(string) *labrpc.ClientEnd
+	gid          int
+	ctrlers      []*labrpc.ClientEnd
+	sc           *shardctrler.Clerk
+	config       *shardctrler.Config
+	shardTable   [shardctrler.NShards]int32 // status for each shard, 0: ready 1: need to send 2: wait to receive
+	targetConfig int
 
 	maxAppliedCmd int64
 	maxraftstate  int // snapshot if log grows this big
 
-	ma map[string]string // kv implementation
+	ma [shardctrler.NShards]map[string]string // kv implementation shard map
 	// subscriber map for leader node
-	subscriberMap map[int64]map[int64]chan int
+	subscriberMap map[int64]map[int64]chan string
 	//idempotent number for request
 	serialMap map[int64]int64
 }
@@ -48,7 +53,8 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 func (kv *ShardKV) get(args *GetArgs) *string {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	val := kv.ma[args.Key]
+	ma := kv.ma[key2shard(args.Key)]
+	val := ma[args.Key]
 	return &val
 }
 
@@ -57,20 +63,24 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 	defer kv.mu.Unlock()
 	if kv.serialMap[args.ClientID] >= args.SerialNumber {
 		//already applied
-		DPrintf("[server %d]putAppend serial number %d from client %d duplicate call, key: %s, val: %s",
-			kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d duplicate call, Key:%s, val: %s",
+			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, kv.ma[key2shard(args.Key)][args.Key])
 		return
 	}
 	// update serial map
 	kv.serialMap[args.ClientID] = args.SerialNumber
 	putOrAppend := args.Op
+	shard := key2shard(args.Key)
+	ma := kv.ma[shard]
 	if putOrAppend == "Append" {
-		kv.ma[args.Key] = kv.ma[args.Key] + args.Value
+		ma[args.Key] = ma[args.Key] + args.Value
 	} else {
-		kv.ma[args.Key] = args.Value
+		ma[args.Key] = args.Value
 	}
-	DPrintf("[server %d]putAppend serial number %d from client %d applied, key: %s, val: %s",
-		kv.me, args.SerialNumber, args.ClientID, args.Key, kv.ma[args.Key])
+	if _, isLeader := kv.rf.GetState(); isLeader || !LeaderLog {
+		DPrintf("[server %d group %d]putAppend serial number %d from client %d applied, Key:%s, shard: %d, val: %s",
+			kv.me, kv.gid, args.SerialNumber, args.ClientID, args.Key, shard, ma[args.Key])
+	}
 }
 
 //
@@ -81,7 +91,11 @@ func (kv *ShardKV) putAppend(args *PutAppendArgs) {
 //
 func (kv *ShardKV) Kill() {
 	kv.rf.Kill()
-	// Your code here, if desired.
+	atomic.StoreInt32(&kv.dead, 1)
+}
+
+func (kv *ShardKV) isKilled() bool {
+	return atomic.LoadInt32(&kv.dead) == int32(1)
 }
 
 //
@@ -118,6 +132,9 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	labgob.Register(&Op{})
 	labgob.Register(&PutAppendArgs{})
 	labgob.Register(&GetArgs{})
+	labgob.Register(&UpdateConfigArgs{})
+	labgob.Register(&MigrationArgs{})
+	labgob.Register(&AlterShardStatus{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -125,17 +142,24 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.make_end = make_end
 	kv.gid = gid
 	kv.ctrlers = ctrlers
+	kv.serialNumber = 1
 
 	kv.sc = shardctrler.MakeClerk(kv.ctrlers)
+	kv.targetConfig = 0
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
-	kv.ma = make(map[string]string)
-	kv.subscriberMap = make(map[int64]map[int64]chan int)
+	for idx, _ := range kv.ma {
+		kv.ma[idx] = make(map[string]string)
+	}
+
+	kv.subscriberMap = make(map[int64]map[int64]chan string)
 	kv.serialMap = make(map[int64]int64)
 
 	go kv.applyObserver()
+	go kv.pollShardConfig()
+	go kv.updateConfigProcessor()
 
 	return kv
 }

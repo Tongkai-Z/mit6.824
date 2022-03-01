@@ -11,6 +11,7 @@ package shardkv
 import (
 	"crypto/rand"
 	"math/big"
+	"sync/atomic"
 	"time"
 
 	"6.824/labrpc"
@@ -39,10 +40,11 @@ func nrand() int64 {
 }
 
 type Clerk struct {
-	sm       *shardctrler.Clerk
-	config   shardctrler.Config
-	make_end func(string) *labrpc.ClientEnd
-	// You will have to modify this struct.
+	sm           *shardctrler.Clerk
+	config       shardctrler.Config
+	make_end     func(string) *labrpc.ClientEnd
+	clientID     int64
+	serialNumber int64
 }
 
 //
@@ -58,7 +60,8 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck := new(Clerk)
 	ck.sm = shardctrler.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	// You'll have to add code here.
+	ck.clientID = nrand()
+	ck.serialNumber = 1
 	return ck
 }
 
@@ -71,21 +74,27 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 func (ck *Clerk) Get(key string) string {
 	args := GetArgs{}
 	args.Key = key
-
+	args.ClientID = ck.clientID
+	args.SerialNumber = atomic.LoadInt64(&ck.serialNumber)
+	atomic.AddInt64(&ck.serialNumber, 1)
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
+		args.ConfigNum = ck.config.Num
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
-			for si := 0; si < len(servers); si++ {
-				srv := ck.make_end(servers[si])
+			for si := 0; ; si++ {
+				srv := ck.make_end(servers[si%len(servers)])
 				var reply GetReply
 				ok := srv.Call("ShardKV.Get", &args, &reply)
 				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
-				if ok && (reply.Err == ErrWrongGroup) {
+				if ok && (reply.Err == ErrWrongGroup || reply.Err == ErrConfigNotMatch) {
 					break
+				}
+				if ok && reply.Err == ErrKeyNotReady {
+					time.Sleep(100 * time.Millisecond)
 				}
 				// ... not ok, or ErrWrongLeader
 			}
@@ -105,21 +114,31 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Key = key
 	args.Value = value
 	args.Op = op
+	args.ClientID = ck.clientID
+	args.SerialNumber = atomic.LoadInt64(&ck.serialNumber)
+	atomic.AddInt64(&ck.serialNumber, 1)
 
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
+		args.ConfigNum = ck.config.Num
 		if servers, ok := ck.config.Groups[gid]; ok {
-			for si := 0; si < len(servers); si++ {
-				srv := ck.make_end(servers[si])
+			// FIXME: timeout may exit loop and cause client to query new config
+			for si := 0; ; si++ {
+				srv := ck.make_end(servers[si%len(servers)])
 				var reply PutAppendReply
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
 				if ok && reply.Err == OK {
 					return
 				}
-				if ok && reply.Err == ErrWrongGroup {
+				if ok && (reply.Err == ErrWrongGroup || reply.Err == ErrConfigNotMatch) {
 					break
 				}
+
+				if ok && reply.Err == ErrKeyNotReady {
+					time.Sleep(100 * time.Millisecond)
+				}
+				// not wrong
 				// ... not ok, or ErrWrongLeader
 			}
 		}

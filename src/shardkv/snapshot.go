@@ -4,13 +4,17 @@ import (
 	"bytes"
 
 	"6.824/labgob"
+	"6.824/shardctrler"
 )
 
 type ServerPersistedState struct {
 	Term          int32
 	MaxAppliedCmd int64
-	Ma            map[string]string
+	Ma            [shardctrler.NShards]map[string]string
 	SerialMap     map[int64]int64
+
+	Config     *shardctrler.Config
+	ShardTable [shardctrler.NShards]int32 // status for each shard, 0: noshard 1: pending 2: ready
 }
 
 // this function checks whether the raft log exceeds the raftmaxstate
@@ -18,7 +22,7 @@ func (kv *ShardKV) condSnapshot() {
 	if kv.maxraftstate != -1 && kv.maxraftstate <= kv.rf.GetLogSize() {
 		kv.mu.Lock()
 		// persist kvServer state
-		DPrintf("[server %d] snapshot state, index: %d", kv.me, kv.maxAppliedCmd)
+		// DPrintf("[server %d] snapshot state, index: %d", kv.me, kv.maxAppliedCmd)
 		kvState := kv.encodeState()
 		// send snapshot to raft
 		kv.rf.Snapshot(int(kv.maxAppliedCmd), kvState)
@@ -35,6 +39,9 @@ func (kv *ShardKV) encodeState() []byte {
 		MaxAppliedCmd: kv.maxAppliedCmd,
 		Ma:            kv.ma,
 		SerialMap:     kv.serialMap,
+
+		Config:     kv.config,
+		ShardTable: kv.shardTable,
 	}
 	e.Encode(s)
 	return w.Bytes()
@@ -56,7 +63,10 @@ func (kv *ShardKV) applySnapshot(term, index int, snapshot []byte) {
 			kv.maxAppliedCmd = decoded.MaxAppliedCmd
 			kv.ma = decoded.Ma
 			kv.serialMap = decoded.SerialMap
-			DPrintf("[server %d] snapshot appied, index: %d", kv.me, kv.maxAppliedCmd)
+
+			kv.config = decoded.Config
+			kv.shardTable = decoded.ShardTable
+			DPrintf("[server %d group %d] snapshot appied, index: %d", kv.me, kv.gid, kv.maxAppliedCmd)
 		}
 
 	}
